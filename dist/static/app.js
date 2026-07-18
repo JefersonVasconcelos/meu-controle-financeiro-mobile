@@ -267,6 +267,12 @@ const dom = {
   importPreview: document.querySelector("#importPreview"),
   confirmImport: document.querySelector("#confirmImport"),
   importMessage: document.querySelector("#importMessage"),
+  serviceHealth: document.querySelector("#serviceHealth"),
+  refreshOperations: document.querySelector("#refreshOperations"),
+  eraseCloudData: document.querySelector("#eraseCloudData"),
+  historyList: document.querySelector("#historyList"),
+  auditList: document.querySelector("#auditList"),
+  securityMessage: document.querySelector("#securityMessage"),
   expensesList: document.querySelector("#expensesList"),
   searchInput: document.querySelector("#searchInput"),
   staleBanner: document.querySelector("#staleBanner"),
@@ -1428,6 +1434,95 @@ function setView(view) {
   });
   window.scrollTo({ top: 0, behavior: "smooth" });
   if (view === "home") window.requestAnimationFrame(() => drawCharts(getStats()));
+  if (view === "profile") loadOperationalStatus();
+}
+
+function auditLabel(type) {
+  return ({
+    state_created: "Dados criados na nuvem",
+    state_updated: "Dados sincronizados",
+    state_restored: "Versão anterior restaurada",
+    client_error: "Falha de interface registrada",
+    server_error: "Falha do serviço registrada",
+  })[type] || "Evento operacional";
+}
+
+async function loadOperationalStatus() {
+  if (!dom.serviceHealth) return;
+  dom.serviceHealth.textContent = "Verificando";
+  try {
+    const [healthResponse, historyResponse, auditResponse] = await Promise.all([
+      fetch("/api/health", { headers: { accept: "application/json" } }),
+      fetch("/api/history", { headers: { accept: "application/json" } }),
+      fetch("/api/audit", { headers: { accept: "application/json" } }),
+    ]);
+    if (![healthResponse, historyResponse, auditResponse].every((response) => response.ok)) throw new Error("Status indisponível");
+    const [health, history, audit] = await Promise.all([healthResponse.json(), historyResponse.json(), auditResponse.json()]);
+    dom.serviceHealth.textContent = health.status === "ok" ? "Serviço operacional" : "Atenção";
+    dom.historyList.innerHTML = history.items?.length ? history.items.map((item) => `<article class="finance-row"><div><strong>Revisão ${Number(item.revision)}</strong><span>${new Date(item.created_at).toLocaleString("pt-BR")}</span></div><button class="text-button" data-restore-revision="${Number(item.revision)}" type="button">Restaurar</button></article>`).join("") : `<p class="muted">Os pontos de recuperação aparecerão após novas sincronizações.</p>`;
+    dom.auditList.innerHTML = audit.items?.length ? audit.items.map((item) => `<article class="finance-row"><div><strong>${sanitizeText(auditLabel(item.eventType))}</strong><span>${new Date(item.createdAt).toLocaleString("pt-BR")}</span></div></article>`).join("") : `<p class="muted">Nenhum evento operacional registrado.</p>`;
+    dom.securityMessage.textContent = "Histórico e auditoria atualizados.";
+  } catch {
+    dom.serviceHealth.textContent = navigator.onLine ? "Serviço indisponível" : "Sem conexão";
+    dom.securityMessage.textContent = "Não foi possível consultar os controles operacionais agora.";
+  }
+}
+
+async function restoreCloudRevision(revision) {
+  if (!confirm(`Restaurar a revisão ${revision}? A versão atual continuará disponível no histórico.`)) return;
+  const meta = loadCloudMeta();
+  dom.securityMessage.textContent = "Restaurando dados...";
+  try {
+    const response = await fetch("/api/history/restore", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ revision, expectedRevision: meta.revision }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Falha na recuperação");
+    applyFinancialState(payload.state);
+    saveCloudMeta({ revision: payload.revision, pending: false, initialized: true, updatedAt: payload.updatedAt, email: payload.user?.email || meta.email });
+    dom.securityMessage.textContent = "Dados restaurados com sucesso.";
+    showToast("Versão anterior restaurada.");
+    await loadOperationalStatus();
+  } catch (error) {
+    dom.securityMessage.textContent = safeText(error.message, 180) || "Não foi possível restaurar os dados.";
+  }
+}
+
+async function eraseAllFinancialData() {
+  const confirmation = prompt('Esta ação exclui dados atuais, histórico e auditoria. Digite EXCLUIR para confirmar.');
+  if (confirmation !== "EXCLUIR") return;
+  dom.eraseCloudData.disabled = true;
+  dom.securityMessage.textContent = "Excluindo dados...";
+  try {
+    const response = await fetch("/api/account-data", {
+      method: "DELETE",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ confirm: "EXCLUIR" }),
+    });
+    if (!response.ok) throw new Error("Não foi possível excluir os dados.");
+    state = structuredClone(defaultState);
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(cloudMetaKey);
+    pendingStatementImport = [];
+    render();
+    dom.securityMessage.textContent = "Dados financeiros excluídos. O PIN local foi mantido.";
+    showToast("Dados financeiros excluídos.");
+  } catch (error) {
+    dom.securityMessage.textContent = safeText(error.message, 180);
+  } finally {
+    dom.eraseCloudData.disabled = false;
+  }
+}
+
+function reportClientError(area) {
+  if (!navigator.onLine || dom.appShell.classList.contains("is-hidden")) return;
+  fetch("/api/client-error", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message: "Erro não tratado", area: safeText(area, 60) }),
+  }).catch(() => null);
 }
 
 function getWebhookUrl(showMessage = true) {
@@ -2325,6 +2420,12 @@ function bindEvents() {
   dom.cardForm.addEventListener("submit", handleCardSubmit);
   dom.statementFile.addEventListener("change", handleStatementFile);
   dom.confirmImport.addEventListener("click", confirmStatementImport);
+  dom.refreshOperations.addEventListener("click", loadOperationalStatus);
+  dom.eraseCloudData.addEventListener("click", eraseAllFinancialData);
+  dom.historyList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-restore-revision]");
+    if (button) restoreCloudRevision(Number(button.dataset.restoreRevision));
+  });
   dom.settingsForm.addEventListener("submit", saveSettings);
   dom.expensesList.addEventListener("click", (event) => {
     const card = event.target.closest("[data-expense-id]");
@@ -2369,6 +2470,8 @@ function bindEvents() {
     if (document.visibilityState === "visible" && !dom.appShell.classList.contains("is-hidden")) syncCloud();
   });
   window.addEventListener("resize", () => drawCharts(getStats()));
+  window.addEventListener("error", () => reportClientError("window_error"));
+  window.addEventListener("unhandledrejection", () => reportClientError("unhandled_rejection"));
 }
 
 function handleAlertAction(event) {

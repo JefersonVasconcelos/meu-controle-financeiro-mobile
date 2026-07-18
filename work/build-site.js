@@ -15,6 +15,7 @@ const fileTypes = {
   "icon.svg": "image/svg+xml; charset=utf-8",
   "og.png": "image/png",
   "og-phase2.png": "image/png",
+  "og-phase3-secure.png": "image/png",
 };
 
 fs.mkdirSync(staticDir, { recursive: true });
@@ -36,6 +37,20 @@ const schemaSql = \`CREATE TABLE IF NOT EXISTS finance_state (
   state_json TEXT NOT NULL,
   revision INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL
+)\`;
+const historySchemaSql = \`CREATE TABLE IF NOT EXISTS finance_state_history (
+  owner_email TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  state_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (owner_email, revision)
+)\`;
+const auditSchemaSql = \`CREATE TABLE IF NOT EXISTS finance_audit_event (
+  id TEXT PRIMARY KEY NOT NULL,
+  owner_email TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
 )\`;
 const categories = ${JSON.stringify(["Alimentação", "Mercado", "Transporte", "Moradia", "Saúde", "Educação", "Lazer", "Assinaturas", "Compras", "Serviços", "Impostos", "Equipamentos", "Outros"])};
 const paymentMethods = ${JSON.stringify(["Pix", "Cartão de crédito", "Cartão de débito", "Dinheiro", "Boleto", "Transferência"])};
@@ -68,7 +83,11 @@ function getUser(request) {
 
 async function ensureSchema(env) {
   if (!env.DB) throw new Error('Banco de dados indisponível.');
-  schemaPromise ||= env.DB.prepare(schemaSql).run();
+  schemaPromise ||= Promise.all([
+    env.DB.prepare(schemaSql).run(),
+    env.DB.prepare(historySchemaSql).run(),
+    env.DB.prepare(auditSchemaSql).run()
+  ]);
   await schemaPromise;
 }
 
@@ -257,6 +276,73 @@ function rowPayload(row, user) {
   return { state: normalizeState(parsed), revision: Number(row.revision || 0), updatedAt: row.updated_at, user };
 }
 
+async function writeAudit(env, user, eventType, metadata = {}) {
+  const safeMetadata = Object.fromEntries(Object.entries(metadata).slice(0, 12).map(([key, value]) => [cleanText(key, 40), cleanText(value, 160)]));
+  await env.DB.prepare('INSERT INTO finance_audit_event (id, owner_email, event_type, metadata_json, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), user.email, cleanText(eventType, 60), JSON.stringify(safeMetadata), new Date().toISOString()).run().catch(() => null);
+}
+
+async function saveHistory(env, user, row) {
+  if (!row) return;
+  await env.DB.prepare('INSERT OR IGNORE INTO finance_state_history (owner_email, revision, state_json, created_at) VALUES (?, ?, ?, ?)')
+    .bind(user.email, Number(row.revision || 0), row.state_json, row.updated_at || new Date().toISOString()).run().catch(() => null);
+  await env.DB.prepare('DELETE FROM finance_state_history WHERE owner_email = ? AND revision NOT IN (SELECT revision FROM finance_state_history WHERE owner_email = ? ORDER BY revision DESC LIMIT 20)')
+    .bind(user.email, user.email).run().catch(() => null);
+}
+
+async function getHistory(env, user) {
+  await ensureSchema(env);
+  const result = await env.DB.prepare('SELECT revision, created_at FROM finance_state_history WHERE owner_email = ? ORDER BY revision DESC LIMIT 20')
+    .bind(user.email).all();
+  return json({ items: result?.results || [] });
+}
+
+async function getAudit(env, user) {
+  await ensureSchema(env);
+  const result = await env.DB.prepare('SELECT id, event_type, metadata_json, created_at FROM finance_audit_event WHERE owner_email = ? ORDER BY created_at DESC LIMIT 50')
+    .bind(user.email).all();
+  const items = (result?.results || []).map((item) => {
+    let metadata = {};
+    try { metadata = JSON.parse(item.metadata_json || '{}'); } catch {}
+    return { id: item.id, eventType: item.event_type, metadata, createdAt: item.created_at };
+  });
+  return json({ items });
+}
+
+async function restoreHistory(request, env, user) {
+  await ensureSchema(env);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Solicitação inválida.' }, 400); }
+  const revision = Number(body.revision);
+  const expectedRevision = Number(body.expectedRevision);
+  if (!Number.isInteger(revision) || revision < 1 || !Number.isInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'Revisão inválida.' }, 400);
+  const current = await env.DB.prepare('SELECT state_json, revision, updated_at FROM finance_state WHERE owner_email = ?').bind(user.email).first();
+  if (!current || Number(current.revision) !== expectedRevision) return json({ ...rowPayload(current, user), error: 'Os dados foram atualizados em outro dispositivo.' }, 409);
+  const historical = await env.DB.prepare('SELECT state_json, revision, created_at FROM finance_state_history WHERE owner_email = ? AND revision = ?').bind(user.email, revision).first();
+  if (!historical) return json({ error: 'Ponto de recuperação não encontrado.' }, 404);
+  await saveHistory(env, user, current);
+  const state = normalizeState(JSON.parse(historical.state_json));
+  const updatedAt = new Date().toISOString();
+  const updated = await env.DB.prepare('UPDATE finance_state SET state_json = ?, revision = revision + 1, updated_at = ? WHERE owner_email = ? AND revision = ? RETURNING revision, updated_at')
+    .bind(JSON.stringify(state), updatedAt, user.email, expectedRevision).first();
+  if (!updated) return json({ error: 'Conflito durante a recuperação.' }, 409);
+  await writeAudit(env, user, 'state_restored', { restoredRevision: revision, newRevision: updated.revision });
+  return json({ state, revision: Number(updated.revision), updatedAt: updated.updated_at, user });
+}
+
+async function eraseAccountData(request, env, user) {
+  await ensureSchema(env);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Solicitação inválida.' }, 400); }
+  if (body.confirm !== 'EXCLUIR') return json({ error: 'Confirmação obrigatória.' }, 400);
+  await Promise.all([
+    env.DB.prepare('DELETE FROM finance_state WHERE owner_email = ?').bind(user.email).run(),
+    env.DB.prepare('DELETE FROM finance_state_history WHERE owner_email = ?').bind(user.email).run(),
+    env.DB.prepare('DELETE FROM finance_audit_event WHERE owner_email = ?').bind(user.email).run()
+  ]);
+  return json({ deleted: true });
+}
+
 async function getState(env, user) {
   await ensureSchema(env);
   const row = await env.DB.prepare('SELECT state_json, revision, updated_at FROM finance_state WHERE owner_email = ?')
@@ -287,6 +373,7 @@ async function putState(request, env, user) {
     try {
       await env.DB.prepare('INSERT INTO finance_state (owner_email, state_json, revision, updated_at) VALUES (?, ?, 1, ?)')
         .bind(user.email, stateJson, updatedAt).run();
+      await writeAudit(env, user, 'state_created', { revision: 1 });
       return json({ state, revision: 1, updatedAt, user });
     } catch {
       const conflict = await env.DB.prepare('SELECT state_json, revision, updated_at FROM finance_state WHERE owner_email = ?')
@@ -295,6 +382,8 @@ async function putState(request, env, user) {
     }
   }
 
+  await saveHistory(env, user, current);
+
   const updated = await env.DB.prepare('UPDATE finance_state SET state_json = ?, revision = revision + 1, updated_at = ? WHERE owner_email = ? AND revision = ? RETURNING revision, updated_at')
     .bind(stateJson, updatedAt, user.email, expectedRevision).first();
   if (!updated) {
@@ -302,6 +391,7 @@ async function putState(request, env, user) {
       .bind(user.email).first();
     return json({ ...rowPayload(conflict, user), error: 'Os dados foram atualizados em outro dispositivo.' }, 409);
   }
+  await writeAudit(env, user, 'state_updated', { previousRevision: expectedRevision, revision: updated.revision });
   return json({ state, revision: Number(updated.revision), updatedAt: updated.updated_at, user });
 }
 
@@ -314,9 +404,21 @@ export default {
       try {
         if (url.pathname === '/api/state' && request.method === 'GET') return getState(env, user);
         if (url.pathname === '/api/state' && request.method === 'PUT') return putState(request, env, user);
+        if (url.pathname === '/api/history' && request.method === 'GET') return getHistory(env, user);
+        if (url.pathname === '/api/history/restore' && request.method === 'POST') return restoreHistory(request, env, user);
+        if (url.pathname === '/api/audit' && request.method === 'GET') return getAudit(env, user);
+        if (url.pathname === '/api/account-data' && request.method === 'DELETE') return eraseAccountData(request, env, user);
+        if (url.pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok', storage: Boolean(env.DB), checkedAt: new Date().toISOString() });
+        if (url.pathname === '/api/client-error' && request.method === 'POST') {
+          let body = {};
+          try { body = await request.json(); } catch {}
+          await writeAudit(env, user, 'client_error', { message: cleanText(body.message, 160), area: cleanText(body.area, 60) });
+          return json({ received: true }, 202);
+        }
         return json({ error: 'Rota não encontrada.' }, 404);
       } catch (error) {
-        return json({ error: cleanText(error?.message, 200) || 'Falha interna na sincronização.' }, 500);
+        await writeAudit(env, user, 'server_error', { route: url.pathname });
+        return json({ error: 'Falha interna na sincronização.' }, 500);
       }
     }
     let pathname = decodeURIComponent(url.pathname);

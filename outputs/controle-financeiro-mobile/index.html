@@ -9,13 +9,13 @@
     />
     <meta name="theme-color" content="#0f2445" />
     <meta property="og:title" content="Meu Controle Financeiro" />
-    <meta property="og:description" content="Tudo conectado. Saldo sob controle." />
+    <meta property="og:description" content="Seus dados. Seu controle." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase2.png" />
+    <meta property="og:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase3-secure.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Meu Controle Financeiro" />
-    <meta name="twitter:description" content="Tudo conectado. Saldo sob controle." />
-    <meta name="twitter:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase2.png" />
+    <meta name="twitter:description" content="Seus dados. Seu controle." />
+    <meta name="twitter:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase3-secure.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Meu Controle" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -528,6 +528,48 @@
               <input id="importBackup" class="visually-hidden" type="file" accept="application/json,.json" />
             </div>
             <p id="cloudMessage" class="form-message" role="status" aria-live="polite"></p>
+          </section>
+
+          <section class="panel cloud-panel" aria-labelledby="securityPanelTitle">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Fase 3</p>
+                <h2 id="securityPanelTitle">Segurança, recuperação e privacidade</h2>
+              </div>
+              <span id="serviceHealth" class="badge">Verificando</span>
+            </div>
+            <div class="security-grid">
+              <article class="security-card">
+                <h3>Proteção dos dados</h3>
+                <ul>
+                  <li>Identidade centralizada pela conta autenticada.</li>
+                  <li>Comunicação protegida por HTTPS.</li>
+                  <li>Dados separados por usuário no servidor.</li>
+                  <li>PIN protegido por derivação PBKDF2 neste dispositivo.</li>
+                </ul>
+                <p class="helper-text">O aplicativo não anuncia criptografia ponta a ponta: a hospedagem precisa processar os dados para sincronizá-los.</p>
+              </article>
+              <article class="security-card">
+                <h3>Controles LGPD</h3>
+                <p>Finalidade: organizar os dados financeiros informados pelo próprio usuário. Não há venda de dados nem publicidade comportamental.</p>
+                <p>Você pode exportar, corrigir e excluir seus dados. Registros técnicos guardam somente eventos operacionais, sem valores financeiros.</p>
+              </article>
+            </div>
+            <div class="button-row security-actions">
+              <button id="refreshOperations" class="secondary-button" type="button">Atualizar auditoria</button>
+              <button id="eraseCloudData" class="danger-button" type="button">Excluir dados da nuvem</button>
+            </div>
+            <div class="section-grid security-sections">
+              <article>
+                <h3>Pontos de recuperação</h3>
+                <div id="historyList" class="finance-list"><p class="muted">Carregando histórico...</p></div>
+              </article>
+              <article>
+                <h3>Atividade da conta</h3>
+                <div id="auditList" class="finance-list"><p class="muted">Carregando auditoria...</p></div>
+              </article>
+            </div>
+            <p id="securityMessage" class="form-message" role="status" aria-live="polite"></p>
           </section>
         </section>
       </main>
