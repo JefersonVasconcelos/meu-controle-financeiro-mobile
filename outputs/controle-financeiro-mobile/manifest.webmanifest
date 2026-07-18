@@ -1,0 +1,20 @@
+{
+  "name": "Meu Controle Financeiro",
+  "short_name": "Meu Controle",
+  "description": "Controle financeiro pessoal mobile-first com envio de comprovantes para n8n.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef3f7",
+  "theme_color": "#0f2445",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

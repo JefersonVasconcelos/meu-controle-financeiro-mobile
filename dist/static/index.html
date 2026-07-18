@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Aplicativo mobile-first para controle financeiro pessoal com envio de comprovantes para n8n."
+    />
+    <meta name="theme-color" content="#0f2445" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Meu Controle" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Meu Controle Financeiro</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="authScreen" class="auth-screen">
+      <section class="auth-panel">
+        <p class="eyebrow">Acesso protegido</p>
+        <h1>Meu Controle Financeiro</h1>
+        <p class="muted">
+          Crie ou informe seu PIN para visualizar seus gastos neste aparelho.
+        </p>
+        <label class="field">
+          <span>PIN</span>
+          <input id="pinInput" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" placeholder="4 ou mais digitos" />
+        </label>
+        <button id="authButton" class="primary-button" type="button">Entrar</button>
+        <p id="authMessage" class="form-message" role="status"></p>
+      </section>
+    </div>
+
+    <div id="appShell" class="app-shell is-hidden">
+      <aside class="sidebar" aria-label="Menu lateral">
+        <div>
+          <p class="eyebrow">Financas pessoais</p>
+          <h2>Meu Controle Financeiro</h2>
+        </div>
+        <nav class="side-nav">
+          <button class="nav-item is-active" data-view="home" type="button">Inicio</button>
+          <button class="nav-item" data-view="expenses" type="button">Gastos</button>
+          <button class="nav-item" data-view="add" type="button">Adicionar</button>
+          <button class="nav-item" data-view="alerts" type="button">Alertas</button>
+          <button class="nav-item" data-view="profile" type="button">Perfil</button>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Meus gastos</p>
+            <h1>Meu Controle Financeiro</h1>
+          </div>
+          <div class="topbar-actions">
+            <button id="refreshData" class="refresh-data-button" type="button" aria-label="Atualizar dados">
+              Atualizar dados
+            </button>
+            <div class="month-switcher" aria-label="Selecionar mes">
+              <button id="prevMonth" class="icon-button" type="button" aria-label="Mes anterior">&lt;</button>
+              <strong id="currentMonthLabel"></strong>
+              <button id="nextMonth" class="icon-button" type="button" aria-label="Proximo mes">&gt;</button>
+            </div>
+          </div>
+        </header>
+
+        <section id="homeView" class="view is-active">
+          <div id="staleBanner" class="status-banner is-hidden">
+            Dashboard desatualizado. <button id="refreshDashboard" type="button">Atualizar</button>
+          </div>
+
+          <section class="hero-panel">
+            <div>
+              <p class="eyebrow">Saldo disponivel</p>
+              <h2 id="availableValue">R$ 0,00</h2>
+              <p id="budgetHint" class="muted">Defina um limite mensal para acompanhar seus gastos.</p>
+            </div>
+            <div class="budget-ring" aria-label="Percentual utilizado">
+              <canvas id="budgetRing" width="150" height="150"></canvas>
+              <span id="budgetPercent">0%</span>
+            </div>
+          </section>
+
+          <section class="progress-card">
+            <div class="row-between">
+              <span>Limite mensal</span>
+              <strong id="budgetValue">R$ 0,00</strong>
+            </div>
+            <div class="progress-track" aria-hidden="true">
+              <div id="budgetBar" class="progress-fill"></div>
+            </div>
+            <div class="row-between small-text">
+              <span id="spentValue">Gasto: R$ 0,00</span>
+              <span id="remainingDays"></span>
+            </div>
+          </section>
+
+          <section class="metric-grid" id="metricsGrid"></section>
+
+          <section class="section-grid">
+            <article class="panel">
+              <div class="section-title">
+                <h2>Resumo do mes</h2>
+                <span id="monthComparisonBadge" class="badge">Sem comparacao</span>
+              </div>
+              <div id="summaryList" class="summary-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="section-title">
+                <h2>Alertas financeiros</h2>
+                <button class="text-button" data-view-target="alerts" type="button">Ver todos</button>
+              </div>
+              <div id="homeAlerts" class="alert-list"></div>
+            </article>
+          </section>
+
+          <section class="charts-grid">
+            <article class="panel chart-panel">
+              <h2>Gastos por categoria</h2>
+              <canvas id="categoryChart" height="220"></canvas>
+            </article>
+            <article class="panel chart-panel">
+              <h2>Gastos por semana</h2>
+              <canvas id="weekChart" height="220"></canvas>
+            </article>
+            <article class="panel chart-panel">
+              <h2>Evolucao no mes</h2>
+              <canvas id="evolutionChart" height="220"></canvas>
+            </article>
+            <article class="panel chart-panel">
+              <h2>Pago e pendente</h2>
+              <canvas id="statusChart" height="220"></canvas>
+            </article>
+          </section>
+        </section>
+
+        <section id="expensesView" class="view">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Consulta</p>
+              <h2>Meus Gastos</h2>
+            </div>
+            <button id="openFilters" class="secondary-button" type="button">Filtros</button>
+          </div>
+          <label class="search-box">
+            <span>Buscar</span>
+            <input id="searchInput" type="search" placeholder="Estabelecimento, descricao, categoria ou numero da nota" />
+          </label>
+          <div id="expensesList" class="expense-list"></div>
+        </section>
+
+        <section id="addView" class="view">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Adicionar</p>
+              <h2>Novo gasto</h2>
+            </div>
+          </div>
+
+          <div class="add-choice">
+            <button id="showUpload" class="choice-card is-active" type="button">
+              <strong>Enviar comprovante</strong>
+              <span>Foto, cupom fiscal ou comprovante de compra.</span>
+            </button>
+            <button id="showManual" class="choice-card" type="button">
+              <strong>Adicionar gasto manual</strong>
+              <span>Cadastre uma compra sem imagem.</span>
+            </button>
+          </div>
+
+          <section id="uploadPanel" class="panel">
+            <h2>Enviar Comprovante</h2>
+            <p class="muted">
+              Tire uma foto legivel da nota fiscal ou selecione uma imagem. Os dados da compra serao preenchidos automaticamente.
+            </p>
+            <div class="upload-box" id="dropZone">
+              <input id="receiptInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" capture="environment" />
+              <div id="emptyUploadState">
+                <strong>Tirar foto ou escolher imagem</strong>
+                <span>JPG, JPEG, PNG ou WEBP</span>
+              </div>
+              <img id="receiptPreview" class="receipt-preview is-hidden" alt="Previa do comprovante" />
+            </div>
+            <div class="button-row">
+              <button id="removeImage" class="secondary-button" type="button" disabled>Remover imagem</button>
+              <button id="sendReceipt" class="primary-button" type="button" disabled>Ler comprovante</button>
+            </div>
+            <ol id="processingSteps" class="processing-steps" aria-live="polite"></ol>
+            <p id="uploadMessage" class="form-message" role="status"></p>
+          </section>
+
+          <section id="manualPanel" class="panel is-hidden">
+            <h2>Adicionar gasto manual</h2>
+            <form id="manualForm" class="form-grid">
+              <label class="field">
+                <span>Descricao do gasto</span>
+                <input name="descricao" required />
+              </label>
+              <label class="field">
+                <span>Categoria</span>
+                <select name="categoria" required></select>
+              </label>
+              <label class="field">
+                <span>Data</span>
+                <input name="data_emissao" type="date" required />
+              </label>
+              <label class="field">
+                <span>Valor</span>
+                <input name="valor_total" type="number" min="0" step="0.01" required />
+              </label>
+              <label class="field">
+                <span>Forma de pagamento</span>
+                <select name="forma_pagamento" required></select>
+              </label>
+              <label class="field">
+                <span>Status do pagamento</span>
+                <select name="status_pagamento" required>
+                  <option>Pago</option>
+                  <option>Pendente</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Data de vencimento</span>
+                <input name="data_vencimento" type="date" />
+              </label>
+              <label class="field field-full">
+                <span>Observacoes</span>
+                <textarea name="observacoes" rows="3"></textarea>
+              </label>
+              <button class="primary-button field-full" type="submit">Salvar gasto</button>
+            </form>
+          </section>
+        </section>
+
+        <section id="alertsView" class="view">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Atencao</p>
+              <h2>Alertas financeiros</h2>
+            </div>
+          </div>
+          <div id="alertsList" class="alert-list"></div>
+        </section>
+
+        <section id="profileView" class="view">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Configuracoes</p>
+              <h2>Perfil e orcamento</h2>
+            </div>
+          </div>
+          <section class="panel">
+            <form id="settingsForm" class="form-grid">
+              <label class="field">
+                <span>Limite total do mes</span>
+                <input name="monthlyLimit" type="number" min="0" step="0.01" required />
+              </label>
+              <label class="field">
+                <span>Dia de inicio do ciclo</span>
+                <input name="cycleStartDay" type="number" min="1" max="28" required />
+              </label>
+              <label class="field">
+                <span>Meta de economia</span>
+                <input name="savingsGoal" type="number" min="0" step="0.01" />
+              </label>
+              <label class="field">
+                <span>Webhook n8n</span>
+                <input name="webhookUrl" type="url" placeholder="https://..." />
+              </label>
+              <div class="field-full category-limits">
+                <h3>Limite por categoria</h3>
+                <div id="categoryLimits"></div>
+              </div>
+              <button class="primary-button field-full" type="submit">Salvar configuracoes</button>
+            </form>
+          </section>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Menu inferior">
+        <button class="bottom-item is-active" data-view="home" type="button"><span>Inicio</span></button>
+        <button class="bottom-item" data-view="expenses" type="button"><span>Gastos</span></button>
+        <button class="bottom-item add-button" data-view="add" type="button"><span>Adicionar</span></button>
+        <button class="bottom-item" data-view="alerts" type="button"><span>Alertas</span></button>
+        <button class="bottom-item" data-view="profile" type="button"><span>Perfil</span></button>
+      </nav>
+    </div>
+
+    <div id="reviewModal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+      <section class="modal-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Revisao</p>
+            <h2 id="reviewTitle">Revisar gasto identificado</h2>
+          </div>
+          <button id="closeReview" class="icon-button" type="button" aria-label="Fechar">x</button>
+        </div>
+        <p id="confidenceWarning" class="warning-box is-hidden">
+          Alguns dados podem nao ter sido identificados corretamente. Revise as informacoes antes de salvar.
+        </p>
+        <form id="reviewForm" class="form-grid"></form>
+        <div class="button-row">
+          <button id="cancelReview" class="secondary-button" type="button">Cancelar</button>
+          <button id="editReview" class="secondary-button" type="button">Corrigir dados</button>
+          <button id="confirmReview" class="primary-button" type="button">Confirmar gasto</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="detailModal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <section class="modal-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Detalhes</p>
+            <h2 id="detailTitle">Gasto</h2>
+          </div>
+          <button id="closeDetail" class="icon-button" type="button" aria-label="Fechar">x</button>
+        </div>
+        <div id="detailContent" class="detail-content"></div>
+        <div class="button-row detail-actions">
+          <button id="markPaid" class="secondary-button" type="button">Marcar como pago</button>
+          <button id="markPending" class="secondary-button" type="button">Marcar como pendente</button>
+          <button id="shareExpense" class="secondary-button" type="button">Compartilhar resumo</button>
+          <button id="deleteExpense" class="danger-button" type="button">Excluir gasto</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="filterDrawer" class="drawer is-hidden" aria-hidden="true">
+      <section class="drawer-panel">
+        <div class="section-title">
+          <h2>Filtros</h2>
+          <button id="closeFilters" class="icon-button" type="button" aria-label="Fechar filtros">x</button>
+        </div>
+        <form id="filterForm" class="form-grid">
+          <label class="field">
+            <span>Categoria</span>
+            <select name="categoria"></select>
+          </label>
+          <label class="field">
+            <span>Status</span>
+            <select name="status_pagamento">
+              <option value="">Todos</option>
+              <option>Pago</option>
+              <option>Pendente</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Forma de pagamento</span>
+            <select name="forma_pagamento"></select>
+          </label>
+          <label class="field">
+            <span>Valor minimo</span>
+            <input name="minValue" type="number" min="0" step="0.01" />
+          </label>
+          <label class="field">
+            <span>Valor maximo</span>
+            <input name="maxValue" type="number" min="0" step="0.01" />
+          </label>
+          <label class="field">
+            <span>Inicio do periodo</span>
+            <input name="startDate" type="date" />
+          </label>
+          <label class="field">
+            <span>Fim do periodo</span>
+            <input name="endDate" type="date" />
+          </label>
+          <label class="field">
+            <span>Ordenar por</span>
+            <select name="sortBy">
+              <option value="recent">Mais recentes</option>
+              <option value="oldest">Mais antigos</option>
+              <option value="highest">Maior valor</option>
+              <option value="lowest">Menor valor</option>
+            </select>
+          </label>
+          <button class="primary-button field-full" type="submit">Aplicar filtros</button>
+          <button id="clearFilters" class="secondary-button field-full" type="button">Limpar filtros</button>
+        </form>
+      </section>
+    </div>
+
+    <script src="./app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator && location.protocol !== "file:") {
+        navigator.serviceWorker.register("./service-worker.js").then((registration) => registration.update());
+      }
+    </script>
+  </body>
+</html>
