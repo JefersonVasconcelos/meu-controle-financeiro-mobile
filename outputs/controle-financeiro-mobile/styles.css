@@ -721,7 +721,7 @@ textarea:focus-visible {
   z-index: 20;
   height: 74px;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   align-items: center;
   padding: 8px max(10px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
   background: rgba(255, 255, 255, 0.96);
@@ -825,6 +825,95 @@ textarea:focus-visible {
 
 .cloud-panel {
   margin-top: 14px;
+}
+
+.planning-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 14px;
+  padding: 22px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--blue-950), var(--blue-700));
+  color: white;
+  box-shadow: var(--shadow);
+}
+
+.planning-hero .eyebrow,
+.planning-hero .muted {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.planning-hero h3 {
+  margin: 5px 0 8px;
+  font-size: clamp(28px, 6vw, 42px);
+}
+
+.score-ring {
+  width: 112px;
+  height: 112px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  border: 9px solid rgba(255, 255, 255, 0.24);
+  border-top-color: #9bd9bd;
+  border-radius: 50%;
+}
+
+.score-ring span {
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.score-ring small {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.planning-metrics {
+  margin-bottom: 14px;
+}
+
+.planning-copy {
+  margin: 14px 0 0;
+  line-height: 1.55;
+}
+
+.planning-grid {
+  margin-top: 14px;
+}
+
+.category-planning {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.category-plan-row {
+  display: grid;
+  gap: 7px;
+}
+
+.category-plan-row .progress-track {
+  margin: 0;
+}
+
+.category-plan-row small {
+  color: var(--muted);
+}
+
+.planning-actions {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding-left: 22px;
+}
+
+.planning-actions li {
+  padding-left: 4px;
+  line-height: 1.5;
 }
 
 .cloud-account-row {
@@ -979,6 +1068,18 @@ textarea:focus-visible {
 
   .hero-panel {
     grid-template-columns: 1fr;
+  }
+
+  .planning-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .score-ring {
+    justify-self: center;
+  }
+
+  .bottom-item {
+    font-size: 10px;
   }
 
   .budget-ring {

@@ -172,6 +172,9 @@ const defaultState = {
     monthlyLimit: 2200,
     cycleStartDay: 1,
     savingsGoal: 300,
+    monthlyIncome: 3500,
+    emergencyReserveCurrent: 1500,
+    emergencyReserveGoal: 9000,
     webhookUrl: "",
     categoryLimits: {
       Mercado: 650,
@@ -222,6 +225,18 @@ const dom = {
   monthComparisonBadge: document.querySelector("#monthComparisonBadge"),
   homeAlerts: document.querySelector("#homeAlerts"),
   alertsList: document.querySelector("#alertsList"),
+  healthBadge: document.querySelector("#healthBadge"),
+  healthScore: document.querySelector("#healthScore"),
+  healthMessage: document.querySelector("#healthMessage"),
+  healthScoreRing: document.querySelector("#healthScoreRing"),
+  planningMetrics: document.querySelector("#planningMetrics"),
+  projectionBadge: document.querySelector("#projectionBadge"),
+  projectionSummary: document.querySelector("#projectionSummary"),
+  reserveBadge: document.querySelector("#reserveBadge"),
+  reserveBar: document.querySelector("#reserveBar"),
+  reserveSummary: document.querySelector("#reserveSummary"),
+  categoryPlanning: document.querySelector("#categoryPlanning"),
+  planningActions: document.querySelector("#planningActions"),
   expensesList: document.querySelector("#expensesList"),
   searchInput: document.querySelector("#searchInput"),
   staleBanner: document.querySelector("#staleBanner"),
@@ -297,6 +312,9 @@ function loadState() {
     const settings = { ...base.settings, ...(parsed.settings || {}) };
     settings.monthlyLimit = Math.max(0, Number(settings.monthlyLimit || 0));
     settings.savingsGoal = Math.max(0, Number(settings.savingsGoal || 0));
+    settings.monthlyIncome = Math.max(0, Number(settings.monthlyIncome || 0));
+    settings.emergencyReserveCurrent = Math.max(0, Number(settings.emergencyReserveCurrent || 0));
+    settings.emergencyReserveGoal = Math.max(0, Number(settings.emergencyReserveGoal || 0));
     settings.cycleStartDay = Math.min(28, Math.max(1, Number(settings.cycleStartDay || 1)));
     settings.categoryLimits = normalizeCategoryLimits(settings.categoryLimits);
     const deletedExpenses = normalizeDeletedExpenses(parsed.deletedExpenses);
@@ -350,6 +368,9 @@ function normalizeFinancialState(source) {
     monthlyLimit: Math.max(0, Number(currentSettings.monthlyLimit || 0)),
     cycleStartDay: Math.min(28, Math.max(1, Number(currentSettings.cycleStartDay || 1))),
     savingsGoal: Math.max(0, Number(currentSettings.savingsGoal || 0)),
+    monthlyIncome: Math.max(0, Number(currentSettings.monthlyIncome || 0)),
+    emergencyReserveCurrent: Math.max(0, Number(currentSettings.emergencyReserveCurrent || 0)),
+    emergencyReserveGoal: Math.max(0, Number(currentSettings.emergencyReserveGoal || 0)),
     categoryLimits: normalizeCategoryLimits(currentSettings.categoryLimits),
   };
   const deletedExpenses = normalizeDeletedExpenses(input.deletedExpenses);
@@ -727,6 +748,7 @@ function render() {
   renderMetrics(stats);
   renderSummary(stats);
   renderAlerts(stats);
+  renderPlanning(stats);
   renderExpenses();
   renderSettings();
   drawCharts(stats);
@@ -856,6 +878,83 @@ function renderAlerts(stats) {
   renderAlertCards(dom.alertsList, alerts);
 }
 
+function calculateFinancialHealth(stats) {
+  const income = Math.max(0, Number(state.settings.monthlyIncome || 0));
+  const reserveCurrent = Math.max(0, Number(state.settings.emergencyReserveCurrent || 0));
+  const reserveGoal = Math.max(0, Number(state.settings.emergencyReserveGoal || 0));
+  const projectedExpense = stats.projected || stats.total;
+  const savingsRate = income ? Math.max(0, (income - projectedExpense) / income) : 0;
+  const reserveProgress = reserveGoal ? Math.min(1, reserveCurrent / reserveGoal) : 0;
+  const budgetControl = stats.spendingBudget ? Math.max(0, 1 - Math.max(0, stats.percentUsed - 70) / 60) : 0;
+  const pendingControl = stats.total ? Math.max(0, 1 - stats.pending / stats.total) : 1;
+  const score = income
+    ? Math.round(Math.min(100, budgetControl * 35 + Math.min(1, savingsRate / 0.2) * 30 + reserveProgress * 25 + pendingControl * 10))
+    : 0;
+  return { income, reserveCurrent, reserveGoal, projectedExpense, savingsRate, reserveProgress, score };
+}
+
+function renderPlanning(stats) {
+  const health = calculateFinancialHealth(stats);
+  const projectedBalance = health.income - health.projectedExpense;
+  const referenceExpense = Math.max(health.projectedExpense, stats.spendingBudget, 1);
+  const reserveMonths = health.reserveCurrent / referenceExpense;
+  const dailySafeLimit = stats.remainingDays > 0 ? Math.max(0, stats.available / stats.remainingDays) : 0;
+  const scoreLabel = health.score >= 80 ? "Muito boa" : health.score >= 60 ? "Estável" : health.score >= 40 ? "Atenção" : "Crítica";
+
+  dom.healthScore.textContent = `${health.score} de 100`;
+  dom.healthScoreRing.textContent = health.score;
+  dom.healthBadge.textContent = health.income ? scoreLabel : "Configure sua renda";
+  dom.healthMessage.textContent = !health.income
+    ? "Informe sua renda líquida mensal no Perfil para ativar o diagnóstico completo."
+    : health.score >= 80
+      ? "Seu planejamento está equilibrado. Mantenha a disciplina e fortaleça a reserva."
+      : health.score >= 60
+        ? "Seu orçamento está sob controle, mas ainda há espaço para reforçar a segurança financeira."
+        : health.score >= 40
+          ? "A projeção pede ajustes no orçamento e na construção da reserva."
+          : "Priorize reduzir o ritmo de gastos e organizar contas pendentes.";
+
+  const metrics = [
+    ["Renda líquida", health.income ? currency(health.income) : "Não informada"],
+    ["Despesa projetada", currency(health.projectedExpense)],
+    ["Saldo projetado", health.income ? currency(projectedBalance) : "-"],
+    ["Taxa de poupança", health.income ? `${Math.round(health.savingsRate * 100)}%` : "-"],
+  ];
+  dom.planningMetrics.innerHTML = metrics.map(([label, value]) => `<article class="metric-card"><span>${sanitizeText(label)}</span><strong>${sanitizeText(value)}</strong></article>`).join("");
+
+  dom.projectionBadge.textContent = projectedBalance >= 0 ? "Saldo positivo" : "Risco de déficit";
+  dom.projectionSummary.innerHTML = [
+    ["Gasto registrado", currency(stats.total)],
+    ["Projeção até o fim", currency(health.projectedExpense)],
+    ["Limite diário seguro", stats.position === "current" ? currency(dailySafeLimit) : "Ciclo fora do período atual"],
+    ["Saldo após a projeção", health.income ? currency(projectedBalance) : "Informe sua renda"],
+  ].map(([label, value]) => `<div class="summary-item"><span>${sanitizeText(label)}</span><strong>${sanitizeText(value)}</strong></div>`).join("");
+
+  dom.reserveBar.style.width = `${Math.min(100, health.reserveProgress * 100)}%`;
+  dom.reserveBar.style.background = health.reserveProgress >= 1 ? "var(--green)" : "var(--blue-600)";
+  dom.reserveBadge.textContent = health.reserveGoal ? `${Math.round(health.reserveProgress * 100)}% da meta` : "Não configurada";
+  dom.reserveSummary.textContent = health.reserveGoal
+    ? `${currency(health.reserveCurrent)} acumulados de ${currency(health.reserveGoal)}. Cobertura estimada de ${reserveMonths.toFixed(1).replace(".", ",")} meses.`
+    : "Defina o valor atual e a meta da reserva no Perfil.";
+
+  const limits = Object.entries(state.settings.categoryLimits || {}).filter(([, limit]) => Number(limit) > 0);
+  dom.categoryPlanning.innerHTML = limits.length ? limits.map(([category, limit]) => {
+    const spent = Number(stats.categoryTotals[category] || 0);
+    const percent = limit ? spent / limit * 100 : 0;
+    return `<div class="category-plan-row"><div class="row-between"><span>${sanitizeText(category)}</span><strong>${currency(spent)} de ${currency(limit)}</strong></div><div class="progress-track"><div class="progress-fill" style="width:${Math.min(100, percent)}%;background:${getBudgetColor(percent)}"></div></div><small>${Math.round(percent)}% utilizado</small></div>`;
+  }).join("") : `<p class="muted">Defina limites por categoria no Perfil para acompanhar o plano.</p>`;
+
+  const actions = [];
+  if (!health.income) actions.push("Informe sua renda líquida para calcular saldo e taxa de poupança.");
+  if (stats.percentUsed > 90) actions.push("Reduza gastos não essenciais para voltar ao limite do ciclo.");
+  if (stats.pending > 0) actions.push(`Organize ${currency(stats.pending)} em contas pendentes antes de novos compromissos.`);
+  if (!health.reserveGoal) actions.push("Defina uma meta de reserva de emergência.");
+  else if (health.reserveProgress < 1) actions.push(`Direcione parte do saldo mensal para os ${currency(Math.max(0, health.reserveGoal - health.reserveCurrent))} que faltam na reserva.`);
+  if (health.income && health.savingsRate < 0.2) actions.push("Busque uma taxa de poupança próxima de 20% da renda, ajustando-a à sua realidade.");
+  if (!actions.length) actions.push("Mantenha os limites atuais e revise o planejamento no próximo ciclo.");
+  dom.planningActions.innerHTML = actions.slice(0, 5).map((action) => `<li>${sanitizeText(action)}</li>`).join("");
+}
+
 function renderAlertCards(container, alerts) {
   container.replaceChildren();
   alerts.forEach((alert) => {
@@ -925,6 +1024,9 @@ function renderSettings() {
   dom.settingsForm.monthlyLimit.value = state.settings.monthlyLimit;
   dom.settingsForm.cycleStartDay.value = state.settings.cycleStartDay;
   dom.settingsForm.savingsGoal.value = state.settings.savingsGoal;
+  dom.settingsForm.monthlyIncome.value = state.settings.monthlyIncome;
+  dom.settingsForm.emergencyReserveCurrent.value = state.settings.emergencyReserveCurrent;
+  dom.settingsForm.emergencyReserveGoal.value = state.settings.emergencyReserveGoal;
   dom.settingsForm.webhookUrl.value = getWebhookUrl(false);
   dom.categoryLimits.innerHTML = categories.map((category) => `
     <label class="category-limit-row">
@@ -1965,6 +2067,9 @@ function saveSettings(event) {
     monthlyLimit: Math.max(0, Number(data.monthlyLimit || 0)),
     cycleStartDay: Math.min(28, Math.max(1, Number(data.cycleStartDay || 1))),
     savingsGoal: Math.max(0, Number(data.savingsGoal || 0)),
+    monthlyIncome: Math.max(0, Number(data.monthlyIncome || 0)),
+    emergencyReserveCurrent: Math.max(0, Number(data.emergencyReserveCurrent || 0)),
+    emergencyReserveGoal: Math.max(0, Number(data.emergencyReserveGoal || 0)),
     webhookUrl,
     categoryLimits,
   };

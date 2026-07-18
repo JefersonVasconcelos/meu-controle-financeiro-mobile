@@ -8,6 +8,14 @@
       content="Aplicativo mobile-first para controle financeiro pessoal com envio de comprovantes para n8n."
     />
     <meta name="theme-color" content="#0f2445" />
+    <meta property="og:title" content="Meu Controle Financeiro" />
+    <meta property="og:description" content="Planeje hoje. Decida melhor amanhã." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Meu Controle Financeiro" />
+    <meta name="twitter:description" content="Planeje hoje. Decida melhor amanhã." />
+    <meta name="twitter:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Meu Controle" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -46,6 +54,7 @@
           <button class="nav-item" data-view="expenses" type="button">Gastos</button>
           <button class="nav-item" data-view="add" type="button">Adicionar</button>
           <button class="nav-item" data-view="alerts" type="button">Alertas</button>
+          <button class="nav-item" data-view="planning" type="button">Planejamento</button>
           <button class="nav-item" data-view="profile" type="button">Perfil</button>
         </nav>
       </aside>
@@ -266,6 +275,62 @@
           <div id="alertsList" class="alert-list"></div>
         </section>
 
+        <section id="planningView" class="view">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Fase 3</p>
+              <h2>Planejamento financeiro</h2>
+            </div>
+            <span id="healthBadge" class="badge">Configure sua renda</span>
+          </div>
+
+          <section class="planning-hero">
+            <div>
+              <p class="eyebrow">Saúde financeira estimada</p>
+              <h3 id="healthScore">0 de 100</h3>
+              <p id="healthMessage" class="muted">Informe sua renda e sua reserva para receber um diagnóstico.</p>
+            </div>
+            <div class="score-ring" aria-label="Pontuação estimada de saúde financeira">
+              <span id="healthScoreRing">0</span>
+              <small>pontos</small>
+            </div>
+          </section>
+
+          <section id="planningMetrics" class="metric-grid planning-metrics"></section>
+
+          <section class="section-grid">
+            <article class="panel">
+              <div class="section-title">
+                <h2>Projeção do ciclo</h2>
+                <span id="projectionBadge" class="badge">Calculando</span>
+              </div>
+              <div id="projectionSummary" class="summary-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="section-title">
+                <h2>Reserva de emergência</h2>
+                <span id="reserveBadge" class="badge">Não configurada</span>
+              </div>
+              <div class="progress-track" aria-hidden="true">
+                <div id="reserveBar" class="progress-fill"></div>
+              </div>
+              <p id="reserveSummary" class="planning-copy muted"></p>
+            </article>
+          </section>
+
+          <section class="section-grid planning-grid">
+            <article class="panel">
+              <h2>Orçamento por categoria</h2>
+              <div id="categoryPlanning" class="category-planning"></div>
+            </article>
+            <article class="panel">
+              <h2>Próximas ações recomendadas</h2>
+              <ol id="planningActions" class="planning-actions"></ol>
+            </article>
+          </section>
+        </section>
+
         <section id="profileView" class="view">
           <div class="section-title">
             <div>
@@ -286,6 +351,18 @@
               <label class="field">
                 <span>Meta de economia</span>
                 <input name="savingsGoal" type="number" min="0" step="0.01" />
+              </label>
+              <label class="field">
+                <span>Renda líquida mensal</span>
+                <input name="monthlyIncome" type="number" min="0" step="0.01" />
+              </label>
+              <label class="field">
+                <span>Reserva de emergência atual</span>
+                <input name="emergencyReserveCurrent" type="number" min="0" step="0.01" />
+              </label>
+              <label class="field">
+                <span>Meta da reserva de emergência</span>
+                <input name="emergencyReserveGoal" type="number" min="0" step="0.01" />
               </label>
               <label class="field">
                 <span>Webhook n8n (HTTPS)</span>
@@ -330,6 +407,7 @@
         <button class="bottom-item" data-view="expenses" type="button"><span>Gastos</span></button>
         <button class="bottom-item add-button" data-view="add" type="button"><span>Adicionar</span></button>
         <button class="bottom-item" data-view="alerts" type="button"><span>Alertas</span></button>
+        <button class="bottom-item" data-view="planning" type="button"><span>Planejar</span></button>
         <button class="bottom-item" data-view="profile" type="button"><span>Perfil</span></button>
       </nav>
     </div>
