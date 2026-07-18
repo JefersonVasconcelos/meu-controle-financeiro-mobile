@@ -1,7 +1,7 @@
 {
   "name": "Meu Controle Financeiro",
   "short_name": "Meu Controle",
-  "description": "Controle financeiro pessoal mobile-first com envio de comprovantes para n8n.",
+  "description": "Controle financeiro pessoal com sincronização segura, backup e leitura de comprovantes.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

@@ -28,6 +28,7 @@ const storageKey = "controleFinanceiro:v2";
 const pinKey = "controleFinanceiro:pin";
 const pinHashKey = "controleFinanceiro:pinHash";
 const authSessionKey = "controleFinanceiro:authSession";
+const cloudMetaKey = "controleFinanceiro:cloudMeta:v1";
 const authSessionDuration = 12 * 60 * 60 * 1000;
 
 const initialDate = new Date();
@@ -39,6 +40,9 @@ let reviewMode = "create";
 let lastFocusedElement = null;
 let lastDeletedExpense = null;
 let toastTimer = null;
+let cloudSyncTimer = null;
+let cloudPollTimer = null;
+let cloudSyncPromise = null;
 
 const sampleExpenses = [
   {
@@ -178,6 +182,7 @@ const defaultState = {
     },
   },
   expenses: sampleExpenses,
+  deletedExpenses: [],
   demoMode: true,
   filters: {
     categoria: "",
@@ -224,6 +229,15 @@ const dom = {
   clearDemoData: document.querySelector("#clearDemoData"),
   refreshDashboard: document.querySelector("#refreshDashboard"),
   refreshData: document.querySelector("#refreshData"),
+  cloudStatus: document.querySelector("#cloudStatus"),
+  cloudStatusText: document.querySelector("#cloudStatusText"),
+  syncNowTop: document.querySelector("#syncNowTop"),
+  syncNow: document.querySelector("#syncNow"),
+  cloudRevision: document.querySelector("#cloudRevision"),
+  cloudAccount: document.querySelector("#cloudAccount"),
+  cloudMessage: document.querySelector("#cloudMessage"),
+  exportBackup: document.querySelector("#exportBackup"),
+  importBackup: document.querySelector("#importBackup"),
   showUpload: document.querySelector("#showUpload"),
   showManual: document.querySelector("#showManual"),
   uploadPanel: document.querySelector("#uploadPanel"),
@@ -285,10 +299,12 @@ function loadState() {
     settings.savingsGoal = Math.max(0, Number(settings.savingsGoal || 0));
     settings.cycleStartDay = Math.min(28, Math.max(1, Number(settings.cycleStartDay || 1)));
     settings.categoryLimits = normalizeCategoryLimits(settings.categoryLimits);
+    const deletedExpenses = normalizeDeletedExpenses(parsed.deletedExpenses);
     return {
       ...base,
       ...parsed,
       expenses,
+      deletedExpenses,
       demoMode,
       settings,
       filters: { ...base.filters, ...(parsed.filters || {}) },
@@ -300,6 +316,267 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
+}
+
+function loadCloudMeta() {
+  const parsed = parseJson(localStorage.getItem(cloudMetaKey), {});
+  return {
+    revision: Math.max(0, Number(parsed?.revision || 0)),
+    pending: Boolean(parsed?.pending),
+    initialized: Boolean(parsed?.initialized),
+    updatedAt: normalizeTimestamp(parsed?.updatedAt),
+    email: safeText(parsed?.email, 320),
+  };
+}
+
+function saveCloudMeta(meta) {
+  localStorage.setItem(cloudMetaKey, JSON.stringify(meta));
+}
+
+function financialStateSnapshot(source = state) {
+  const normalized = normalizeFinancialState(source);
+  return {
+    settings: normalized.settings,
+    expenses: normalized.expenses,
+    deletedExpenses: normalized.deletedExpenses,
+    demoMode: normalized.demoMode,
+  };
+}
+
+function normalizeFinancialState(source) {
+  const input = source && typeof source === "object" ? source : {};
+  const currentSettings = input.settings && typeof input.settings === "object" ? input.settings : {};
+  const settings = {
+    monthlyLimit: Math.max(0, Number(currentSettings.monthlyLimit || 0)),
+    cycleStartDay: Math.min(28, Math.max(1, Number(currentSettings.cycleStartDay || 1))),
+    savingsGoal: Math.max(0, Number(currentSettings.savingsGoal || 0)),
+    categoryLimits: normalizeCategoryLimits(currentSettings.categoryLimits),
+  };
+  const deletedExpenses = normalizeDeletedExpenses(input.deletedExpenses);
+  const deletedById = new Map(deletedExpenses.map((item) => [item.id, item.deleted_at]));
+  const expenses = (Array.isArray(input.expenses) ? input.expenses : [])
+    .slice(0, 5000)
+    .map((expense) => normalizeExpense(expense))
+    .filter((expense) => !deletedById.has(expense.id) || deletedById.get(expense.id) < expense.updated_at);
+  const uniqueExpenses = [...expenses.reduce((map, expense) => {
+    const current = map.get(expense.id);
+    if (!current || expense.updated_at >= current.updated_at) map.set(expense.id, expense);
+    return map;
+  }, new Map()).values()];
+  const demoMode = Boolean(input.demoMode) && uniqueExpenses.every((expense) => String(expense.id).startsWith("sample-"));
+  return { settings, expenses: uniqueExpenses, deletedExpenses, demoMode };
+}
+
+function mergeFinancialStates(baseState, incomingState, preferIncomingSettings = true) {
+  const base = normalizeFinancialState(baseState);
+  const incoming = normalizeFinancialState(incomingState);
+  const tombstones = normalizeDeletedExpenses([...base.deletedExpenses, ...incoming.deletedExpenses]);
+  const expenseMap = new Map();
+  [...base.expenses, ...incoming.expenses].forEach((expense) => {
+    const current = expenseMap.get(expense.id);
+    if (!current || expense.updated_at >= current.updated_at) expenseMap.set(expense.id, expense);
+  });
+  const deletedById = new Map(tombstones.map((item) => [item.id, item.deleted_at]));
+  const expenses = [...expenseMap.values()].filter((expense) => !deletedById.has(expense.id) || deletedById.get(expense.id) < expense.updated_at);
+  return {
+    settings: preferIncomingSettings ? incoming.settings : base.settings,
+    expenses,
+    deletedExpenses: tombstones,
+    demoMode: base.demoMode && incoming.demoMode && expenses.every((expense) => String(expense.id).startsWith("sample-")),
+  };
+}
+
+function applyFinancialState(snapshot) {
+  const normalized = normalizeFinancialState(snapshot);
+  const localWebhookUrl = state.settings.webhookUrl || "";
+  state = {
+    ...state,
+    settings: { ...state.settings, ...normalized.settings, webhookUrl: localWebhookUrl },
+    expenses: normalized.expenses,
+    deletedExpenses: normalized.deletedExpenses,
+    demoMode: normalized.demoMode,
+  };
+  saveState();
+  render();
+}
+
+function markCloudChange() {
+  const meta = loadCloudMeta();
+  meta.pending = true;
+  meta.initialized = true;
+  saveCloudMeta(meta);
+  saveState();
+  setCloudStatus("local", "Alterações aguardando sincronização", "Alterações guardadas neste aparelho até a próxima sincronização.");
+  scheduleCloudSync();
+}
+
+function scheduleCloudSync() {
+  window.clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = window.setTimeout(() => {
+    if (!dom.appShell.classList.contains("is-hidden")) syncCloud();
+  }, 1500);
+}
+
+function setCloudStatus(kind, text, message = "") {
+  dom.cloudStatus.classList.remove("is-local", "is-synced", "is-syncing", "is-offline", "is-error");
+  dom.cloudStatus.classList.add(`is-${kind}`);
+  dom.cloudStatusText.textContent = text;
+  if (message) dom.cloudMessage.textContent = message;
+  const meta = loadCloudMeta();
+  dom.cloudRevision.textContent = meta.revision ? `Versão sincronizada ${meta.revision}` : "Ainda não sincronizado";
+  if (meta.email) dom.cloudAccount.textContent = meta.email;
+}
+
+async function syncCloud(options = {}) {
+  if (cloudSyncPromise) return cloudSyncPromise;
+  cloudSyncPromise = performCloudSync(options).finally(() => { cloudSyncPromise = null; });
+  return cloudSyncPromise;
+}
+
+async function performCloudSync({ manual = false } = {}) {
+  setCloudStatus("syncing", "Sincronizando…", manual ? "Conferindo a versão mais recente dos seus dados." : "");
+  dom.syncNow.disabled = true;
+  dom.syncNowTop.disabled = true;
+  try {
+    const remote = await cloudRequest("/api/state", { cache: "no-store" });
+    const meta = loadCloudMeta();
+    meta.initialized = true;
+    meta.email = safeText(remote.user?.email, 320);
+    dom.cloudAccount.textContent = meta.email || "Conta autenticada";
+    const localSnapshot = financialStateSnapshot();
+    if (!meta.pending && meta.revision === 0 && (!localSnapshot.demoMode || localSnapshot.expenses.some((expense) => !String(expense.id).startsWith("sample-")))) {
+      meta.pending = true;
+    }
+
+    if (!remote.state) {
+      saveCloudMeta(meta);
+      if (meta.pending || !localSnapshot.demoMode) {
+        await pushCloudState(localSnapshot, 0);
+      } else {
+        meta.pending = false;
+        meta.revision = 0;
+        saveCloudMeta(meta);
+        setCloudStatus("synced", "Nuvem pronta", "Quando você cadastrar seu primeiro gasto, ele será sincronizado automaticamente.");
+      }
+      return;
+    }
+
+    const remoteSnapshot = normalizeFinancialState(remote.state);
+    if (meta.pending) {
+      const snapshotToPush = meta.revision === Number(remote.revision)
+        ? localSnapshot
+        : mergeFinancialStates(remoteSnapshot, localSnapshot, true);
+      await pushCloudState(snapshotToPush, Number(remote.revision));
+    } else {
+      applyFinancialState(remoteSnapshot);
+      meta.revision = Number(remote.revision || 0);
+      meta.updatedAt = normalizeTimestamp(remote.updatedAt);
+      meta.pending = false;
+      saveCloudMeta(meta);
+      setCloudStatus("synced", `Sincronizado ${formatSyncTime(meta.updatedAt)}`, "Dados atualizados a partir da sua conta.");
+    }
+  } catch (error) {
+    const pending = loadCloudMeta().pending;
+    const offline = navigator.onLine === false || error?.name === "TypeError";
+    setCloudStatus(
+      offline ? "offline" : "error",
+      offline ? "Offline — dados protegidos no aparelho" : "Sincronização indisponível",
+      pending ? "Suas alterações estão guardadas e serão enviadas quando a conexão voltar." : "Não foi possível conferir a nuvem agora. Seus dados locais foram mantidos.",
+    );
+  } finally {
+    dom.syncNow.disabled = false;
+    dom.syncNowTop.disabled = false;
+  }
+}
+
+async function pushCloudState(snapshot, expectedRevision, retry = true) {
+  try {
+    const result = await cloudRequest("/api/state", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ state: snapshot, expectedRevision }),
+    });
+    applyFinancialState(result.state || snapshot);
+    const meta = loadCloudMeta();
+    meta.revision = Number(result.revision || expectedRevision + 1);
+    meta.updatedAt = normalizeTimestamp(result.updatedAt) || new Date().toISOString();
+    meta.pending = false;
+    meta.initialized = true;
+    meta.email = safeText(result.user?.email || meta.email, 320);
+    saveCloudMeta(meta);
+    setCloudStatus("synced", `Sincronizado ${formatSyncTime(meta.updatedAt)}`, "Backup em nuvem atualizado com sucesso.");
+  } catch (error) {
+    if (error.status === 409 && retry && error.payload?.state) {
+      const merged = mergeFinancialStates(error.payload.state, snapshot, true);
+      return pushCloudState(merged, Number(error.payload.revision || 0), false);
+    }
+    throw error;
+  }
+}
+
+async function cloudRequest(path, options = {}) {
+  const response = await fetch(path, { credentials: "same-origin", ...options });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error || "Falha na sincronização.");
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+function formatSyncTime(value) {
+  const parsed = new Date(value || "");
+  if (Number.isNaN(parsed.valueOf())) return "agora";
+  return `às ${parsed.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function initializeCloudSync() {
+  window.clearInterval(cloudPollTimer);
+  syncCloud();
+  cloudPollTimer = window.setInterval(() => {
+    if (document.visibilityState !== "hidden" && !dom.appShell.classList.contains("is-hidden")) syncCloud();
+  }, 60000);
+}
+
+function exportFinancialBackup() {
+  const backup = {
+    format: "meu-controle-financeiro",
+    version: 2,
+    exported_at: new Date().toISOString(),
+    state: financialStateSnapshot(),
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `meu-controle-financeiro-${localDateKey(todayLocal())}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("Backup exportado.");
+}
+
+async function importFinancialBackup(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {
+    showToast("O backup deve ter no máximo 2 MB.");
+    return;
+  }
+  try {
+    const parsed = JSON.parse(await file.text());
+    const imported = normalizeFinancialState(parsed?.state || parsed);
+    if (!Array.isArray((parsed?.state || parsed)?.expenses)) throw new Error("Formato inválido");
+    const merged = mergeFinancialStates(financialStateSnapshot(), imported, true);
+    applyFinancialState(merged);
+    markCloudChange();
+    showToast("Backup importado e mesclado.");
+    syncCloud({ manual: true });
+  } catch {
+    showToast("Não foi possível importar este arquivo de backup.");
+  }
 }
 
 function currency(value) {
@@ -465,6 +742,7 @@ async function refreshDataNow() {
   state = loadState();
   dom.staleBanner.classList.add("is-hidden");
   render();
+  await syncCloud({ manual: true });
   await navigator.serviceWorker?.getRegistration?.().then((registration) => registration?.update()).catch(() => null);
 
   dom.refreshData.textContent = "Painel recarregado";
@@ -863,11 +1141,13 @@ function normalizeExpense(data) {
     }))
     : [];
   const sourceId = safeText(source.id, 80);
+  const hasSafeSourceId = /^[a-zA-Z0-9_-]{1,80}$/.test(sourceId);
+  const registrationDate = normalizeDate(pickValue(source, ["data_registro", "dataRegistro"])) || localDateKey(todayLocal());
   const origin = normalizeOrigin(source.origem);
 
   return {
-    id: /^[a-zA-Z0-9_-]{1,80}$/.test(sourceId) ? sourceId : crypto.randomUUID(),
-    data_registro: normalizeDate(pickValue(source, ["data_registro", "dataRegistro"])) || new Date().toISOString().slice(0, 10),
+    id: hasSafeSourceId ? sourceId : crypto.randomUUID(),
+    data_registro: registrationDate,
     fornecedor: supplier || "",
     cnpj_fornecedor: safeText(pickValue(source, ["cnpj_fornecedor", "cnpjFornecedor", "cnpj", "cnpj_estabelecimento"]), 32),
     numero_nota: safeText(pickValue(source, ["numero_nota", "numeroNota", "numero_da_nota", "numero", "nf", "nota_fiscal", "chave_acesso"]), 80),
@@ -890,11 +1170,30 @@ function normalizeExpense(data) {
     itens_resumo: safeText(pickValue(source, ["itens_resumo", "itensResumo", "resumo_itens"]), 1000) || summarizeItems(items),
     qtd_itens: Math.max(0, Math.min(999, Number(pickValue(source, ["qtd_itens", "qtdItens", "quantidade_itens"]) || items.length))),
     origem: origin,
+    updated_at: normalizeTimestamp(source.updated_at || source.updatedAt) || (hasSafeSourceId ? `${registrationDate}T00:00:00.000Z` : new Date().toISOString()),
   };
 }
 
 function safeText(value, maxLength = 500) {
   return String(value ?? "").replace(/\0/g, "").trim().slice(0, maxLength);
+}
+
+function normalizeTimestamp(value) {
+  const parsed = new Date(String(value || ""));
+  return Number.isNaN(parsed.valueOf()) ? "" : parsed.toISOString();
+}
+
+function normalizeDeletedExpenses(value) {
+  if (!Array.isArray(value)) return [];
+  const latestById = new Map();
+  value.slice(0, 5000).forEach((item) => {
+    const id = safeText(item?.id, 80);
+    const deletedAt = normalizeTimestamp(item?.deleted_at || item?.deletedAt);
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id) || !deletedAt) return;
+    const current = latestById.get(id);
+    if (!current || deletedAt > current.deleted_at) latestById.set(id, { id, deleted_at: deletedAt });
+  });
+  return [...latestById.values()];
 }
 
 function normalizeOrigin(value) {
@@ -1235,9 +1534,11 @@ function createReviewField(name, labelText, type, value) {
 function confirmReview() {
   if (!dom.reviewForm.reportValidity()) return;
   const formData = Object.fromEntries(new FormData(dom.reviewForm).entries());
-  const expense = normalizeExpense({ ...pendingReview, ...formData });
+  const expense = normalizeExpense({ ...pendingReview, ...formData, updated_at: new Date().toISOString() });
   if (reviewMode === "create") prepareForRealData();
   state.expenses = [expense, ...state.expenses.filter((item) => item.id !== expense.id)];
+  state.deletedExpenses = state.deletedExpenses.filter((item) => item.id !== expense.id);
+  markCloudChange();
   const wasEditing = reviewMode === "edit";
   closeReview();
   if (!wasEditing) clearSelectedImage();
@@ -1246,10 +1547,10 @@ function confirmReview() {
   if (wasEditing) {
     setView("expenses");
     openDetail(expense.id);
-    showToast("Alterações salvas.");
+    showToast("Alterações salvas e prontas para sincronizar.");
   } else {
     setView("home");
-    showToast("Gasto salvo neste dispositivo.");
+    showToast("Gasto salvo e pronto para sincronizar.");
   }
 }
 
@@ -1317,7 +1618,8 @@ function updateSelectedStatus(status) {
   const expense = state.expenses.find((item) => item.id === selectedExpenseId);
   if (!expense) return;
   expense.status_pagamento = status;
-  saveState();
+  expense.updated_at = new Date().toISOString();
+  markCloudChange();
   render();
   openDetail(expense.id);
   showToast(`Gasto marcado como ${status.toLowerCase()}.`);
@@ -1344,7 +1646,9 @@ function deleteSelectedExpense() {
   if (!confirm(`Excluir o gasto "${expense.fornecedor || expense.descricao}"?`)) return;
   const index = state.expenses.findIndex((item) => item.id === selectedExpenseId);
   lastDeletedExpense = { expense: structuredClone(expense), index };
+  state.deletedExpenses = normalizeDeletedExpenses([...state.deletedExpenses, { id: expense.id, deleted_at: new Date().toISOString() }]);
   state.expenses = state.expenses.filter((item) => item.id !== selectedExpenseId);
+  markCloudChange();
   selectedExpenseId = null;
   closeDetailModal();
   render();
@@ -1354,8 +1658,11 @@ function deleteSelectedExpense() {
 function undoDelete() {
   if (!lastDeletedExpense) return;
   const { expense, index } = lastDeletedExpense;
+  expense.updated_at = new Date().toISOString();
   state.expenses.splice(Math.max(0, index), 0, expense);
+  state.deletedExpenses = state.deletedExpenses.filter((item) => item.id !== expense.id);
   lastDeletedExpense = null;
+  markCloudChange();
   render();
   showToast("Gasto restaurado.");
 }
@@ -1369,6 +1676,7 @@ function prepareForRealData() {
 function clearDemoData() {
   prepareForRealData();
   selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
+  markCloudChange();
   render();
   showToast("Dados de demonstração removidos. Agora você pode registrar seus gastos.");
 }
@@ -1443,6 +1751,10 @@ function bindEvents() {
   });
   dom.refreshDashboard.addEventListener("click", refreshDataNow);
   dom.refreshData.addEventListener("click", refreshDataNow);
+  dom.syncNowTop.addEventListener("click", () => syncCloud({ manual: true }));
+  dom.syncNow.addEventListener("click", () => syncCloud({ manual: true }));
+  dom.exportBackup.addEventListener("click", exportFinancialBackup);
+  dom.importBackup.addEventListener("change", importFinancialBackup);
   dom.lockApp.addEventListener("click", lockApp);
   dom.clearDemoData.addEventListener("click", clearDemoData);
   dom.searchInput.addEventListener("input", renderExpenses);
@@ -1456,11 +1768,15 @@ function bindEvents() {
     const expense = createExpenseFromForm(dom.manualForm, "Registro manual");
     prepareForRealData();
     state.expenses.unshift(expense);
+    state.deletedExpenses = state.deletedExpenses.filter((item) => item.id !== expense.id);
+    markCloudChange();
     dom.manualForm.reset();
+    dom.manualForm.data_emissao.value = localDateKey(todayLocal());
+    dom.manualForm.status_pagamento.value = "Pago";
     selectedMonth = cycleAnchorForDate(expense.data_emissao);
     render();
     setView("home");
-    showToast("Gasto salvo neste dispositivo.");
+    showToast("Gasto salvo e pronto para sincronizar.");
   });
   dom.settingsForm.addEventListener("submit", saveSettings);
   dom.expensesList.addEventListener("click", (event) => {
@@ -1501,6 +1817,10 @@ function bindEvents() {
     });
   });
   document.addEventListener("keydown", handleOverlayKeydown);
+  window.addEventListener("online", () => syncCloud());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !dom.appShell.classList.contains("is-hidden")) syncCloud();
+  });
   window.addEventListener("resize", () => drawCharts(getStats()));
 }
 
@@ -1553,9 +1873,12 @@ function unlockApp() {
   dom.pinInput.value = "";
   dom.authMessage.textContent = "";
   render();
+  initializeCloudSync();
 }
 
 function lockApp() {
+  window.clearTimeout(cloudSyncTimer);
+  window.clearInterval(cloudPollTimer);
   localStorage.removeItem(authSessionKey);
   dom.appShell.classList.add("is-hidden");
   dom.authScreen.classList.remove("is-hidden");
@@ -1648,9 +1971,9 @@ function saveSettings(event) {
   if (webhookUrl) localStorage.setItem("N8N_UPLOAD_WEBHOOK_URL", webhookUrl);
   else localStorage.removeItem("N8N_UPLOAD_WEBHOOK_URL");
   selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
-  saveState();
+  markCloudChange();
   render();
-  showToast("Configurações salvas neste dispositivo.");
+  showToast("Configurações salvas e prontas para sincronizar.");
 }
 
 function normalizeCategoryLimits(limits) {

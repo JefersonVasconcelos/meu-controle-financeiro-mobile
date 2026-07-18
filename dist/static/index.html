@@ -29,7 +29,7 @@
           <span>PIN</span>
           <input id="pinInput" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" placeholder="4 ou mais dígitos" aria-describedby="pinHelp" />
         </label>
-        <p id="pinHelp" class="helper-text">O PIN é protegido neste dispositivo. Seus dados financeiros também ficam somente nele.</p>
+        <p id="pinHelp" class="helper-text">O PIN permanece neste dispositivo. Depois de entrar, seus gastos podem ser sincronizados com sua conta.</p>
         <button id="authButton" class="primary-button" type="button">Entrar</button>
         <p id="authMessage" class="form-message" role="status"></p>
       </section>
@@ -57,6 +57,11 @@
             <h1>Meu Controle Financeiro</h1>
           </div>
           <div class="topbar-actions">
+            <div id="cloudStatus" class="cloud-status is-local" role="status" aria-live="polite">
+              <span class="cloud-dot" aria-hidden="true"></span>
+              <span id="cloudStatusText">Somente neste dispositivo</span>
+            </div>
+            <button id="syncNowTop" class="secondary-button compact-button" type="button">Sincronizar</button>
             <button id="refreshData" class="refresh-data-button" type="button" aria-label="Recarregar painel com os dados deste dispositivo">
               Recarregar painel
             </button>
@@ -294,6 +299,28 @@
               </div>
               <button class="primary-button field-full" type="submit">Salvar configurações</button>
             </form>
+          </section>
+
+          <section class="panel cloud-panel" aria-labelledby="cloudPanelTitle">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Fase 2</p>
+                <h2 id="cloudPanelTitle">Sincronização e backup</h2>
+              </div>
+              <span id="cloudRevision" class="badge">Ainda não sincronizado</span>
+            </div>
+            <p class="muted">Seus gastos e seu orçamento são vinculados ao acesso autenticado deste aplicativo. O PIN e os filtros continuam exclusivos deste aparelho.</p>
+            <div class="cloud-account-row">
+              <span>Conta conectada</span>
+              <strong id="cloudAccount">Verificando…</strong>
+            </div>
+            <div class="button-row cloud-actions">
+              <button id="syncNow" class="primary-button" type="button">Sincronizar agora</button>
+              <button id="exportBackup" class="secondary-button" type="button">Exportar backup</button>
+              <label class="secondary-button import-button" for="importBackup">Importar e mesclar</label>
+              <input id="importBackup" class="visually-hidden" type="file" accept="application/json,.json" />
+            </div>
+            <p id="cloudMessage" class="form-message" role="status" aria-live="polite"></p>
           </section>
         </section>
       </main>
