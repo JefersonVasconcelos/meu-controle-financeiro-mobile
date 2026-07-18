@@ -4,7 +4,7 @@ const path = require("path");
 const root = path.resolve(__dirname, "..");
 const sourceDir = path.join(root, "outputs", "controle-financeiro-mobile");
 const staticDir = path.join(root, "dist", "static");
-const files = ["app.js", "index.html", "styles.css", "service-worker.js", "manifest.webmanifest", "icon.svg", "og.png", "og-phase2.png", "og-phase3-secure.png"];
+const files = ["app.js", "index.html", "styles.css", "service-worker.js", "manifest.webmanifest", "icon.svg", "og.png", "og-phase2.png", "og-phase3-secure.png", "og-phase4-intelligence.png"];
 
 for (const file of files) {
   const source = fs.readFileSync(path.join(sourceDir, file));
@@ -25,12 +25,13 @@ if (missingIds.length) throw new Error(`Missing ids: ${missingIds.join(", ")}`);
 const server = fs.readFileSync(path.join(root, "dist", "server", "index.js"), "utf8");
 if (!server.includes("content-security-policy")) throw new Error("Security headers are missing");
 if (server.includes("script-src 'self' 'unsafe-inline'")) throw new Error("Inline scripts remain allowed");
-if (!server.includes("controle-financeiro-mobile-v9")) throw new Error("Updated service worker is missing from server bundle");
+if (!server.includes("controle-financeiro-mobile-v10")) throw new Error("Updated service worker is missing from server bundle");
 if (!server.includes("oai-authenticated-user-email")) throw new Error("Authenticated cloud ownership check is missing");
 if (!server.includes("expectedRevision")) throw new Error("Cloud conflict protection is missing");
 if (!server.includes('"/og.png"')) throw new Error("Social preview image is missing");
 if (!server.includes('"/og-phase2.png"')) throw new Error("Phase 2 social preview image is missing");
 if (!server.includes('"/og-phase3-secure.png"')) throw new Error("Phase 3 social preview image is missing");
+if (!server.includes('"/og-phase4-intelligence.png"')) throw new Error("Phase 4 social preview image is missing");
 
 const hosting = JSON.parse(fs.readFileSync(path.join(root, "dist", ".openai", "hosting.json"), "utf8"));
 if (hosting.d1 !== "DB" || hosting.r2 !== null) throw new Error("D1/R2 bindings are not configured as expected");

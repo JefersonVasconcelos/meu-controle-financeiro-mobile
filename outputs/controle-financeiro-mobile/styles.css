@@ -1066,6 +1066,55 @@ textarea:focus-visible {
   margin: 0;
 }
 
+.intelligence-section {
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.forecast-range-card {
+  margin-top: 14px;
+}
+
+.confidence-track {
+  height: 12px;
+  margin-top: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5ebf2;
+}
+
+.confidence-range {
+  min-width: 12%;
+  height: 100%;
+  margin: 0 auto;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(36, 98, 167, 0.4), var(--blue-700), rgba(31, 157, 104, 0.5));
+}
+
+.scenario-controls {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.scenario-controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--blue-700);
+}
+
+.alert-card > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.alert-explanation {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 @media (min-width: 760px) {
   .security-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -9,13 +9,13 @@
     />
     <meta name="theme-color" content="#0f2445" />
     <meta property="og:title" content="Meu Controle Financeiro" />
-    <meta property="og:description" content="Seus dados. Seu controle." />
+    <meta property="og:description" content="Entenda hoje. Planeje o amanhã." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase3-secure.png" />
+    <meta property="og:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase4-intelligence.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Meu Controle Financeiro" />
-    <meta name="twitter:description" content="Seus dados. Seu controle." />
-    <meta name="twitter:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase3-secure.png" />
+    <meta name="twitter:description" content="Entenda hoje. Planeje o amanhã." />
+    <meta name="twitter:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase4-intelligence.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Meu Controle" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -408,8 +408,8 @@
         <section id="planningView" class="view">
           <div class="section-title">
             <div>
-              <p class="eyebrow">Fase 3</p>
-              <h2>Planejamento financeiro</h2>
+              <p class="eyebrow">Fase 4</p>
+              <h2>Inteligência financeira</h2>
             </div>
             <span id="healthBadge" class="badge">Configure sua renda</span>
           </div>
@@ -457,6 +457,48 @@
             <article class="panel">
               <h2>Próximas ações recomendadas</h2>
               <ol id="planningActions" class="planning-actions"></ol>
+            </article>
+          </section>
+
+          <section class="intelligence-section" aria-labelledby="intelligenceTitle">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Previsões explicáveis</p>
+                <h2 id="intelligenceTitle">Se continuar nesse ritmo...</h2>
+              </div>
+              <span id="forecastConfidence" class="badge">Confiança baixa</span>
+            </div>
+            <section id="forecastMetrics" class="metric-grid"></section>
+            <article class="panel forecast-range-card">
+              <div class="row-between"><span>Faixa estimada de gastos no ciclo</span><strong id="forecastRange">Calculando...</strong></div>
+              <div class="confidence-track" aria-hidden="true"><div id="forecastRangeBar" class="confidence-range"></div></div>
+              <p id="forecastExplanation" class="planning-copy muted"></p>
+            </article>
+
+            <section class="section-grid planning-grid">
+              <article class="panel">
+                <h2>Fluxo de caixa previsto</h2>
+                <div id="forecastHorizons" class="finance-list"></div>
+              </article>
+              <article class="panel">
+                <h2>Simular outro ritmo</h2>
+                <div class="scenario-controls">
+                  <label class="field"><span>Ajuste nos gastos: <strong id="paceAdjustmentLabel">0%</strong></span><input id="paceAdjustment" type="range" min="-50" max="50" value="0" step="5" /></label>
+                  <label class="field"><span>Alteração mensal da renda</span><input id="incomeAdjustment" type="number" step="50" value="0" /></label>
+                </div>
+                <div id="scenarioResult" class="summary-list"></div>
+              </article>
+            </section>
+
+            <section class="section-grid planning-grid">
+              <article class="panel"><h2>Anomalias e duplicidades</h2><div id="anomalyList" class="finance-list"></div></article>
+              <article class="panel"><h2>Assinaturas identificadas</h2><div id="subscriptionList" class="finance-list"></div></article>
+            </section>
+
+            <article class="panel planning-grid">
+              <div class="section-title"><h2>Classificação assistida</h2><span id="classificationBadge" class="badge">Analisando</span></div>
+              <p class="muted">As sugestões mostram a confiança estimada e não alteram seus lançamentos automaticamente.</p>
+              <div id="classificationList" class="finance-list"></div>
             </article>
           </section>
         </section>

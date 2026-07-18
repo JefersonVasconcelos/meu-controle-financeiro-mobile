@@ -249,6 +249,20 @@ const dom = {
   reserveSummary: document.querySelector("#reserveSummary"),
   categoryPlanning: document.querySelector("#categoryPlanning"),
   planningActions: document.querySelector("#planningActions"),
+  forecastConfidence: document.querySelector("#forecastConfidence"),
+  forecastMetrics: document.querySelector("#forecastMetrics"),
+  forecastRange: document.querySelector("#forecastRange"),
+  forecastRangeBar: document.querySelector("#forecastRangeBar"),
+  forecastExplanation: document.querySelector("#forecastExplanation"),
+  forecastHorizons: document.querySelector("#forecastHorizons"),
+  paceAdjustment: document.querySelector("#paceAdjustment"),
+  paceAdjustmentLabel: document.querySelector("#paceAdjustmentLabel"),
+  incomeAdjustment: document.querySelector("#incomeAdjustment"),
+  scenarioResult: document.querySelector("#scenarioResult"),
+  anomalyList: document.querySelector("#anomalyList"),
+  subscriptionList: document.querySelector("#subscriptionList"),
+  classificationBadge: document.querySelector("#classificationBadge"),
+  classificationList: document.querySelector("#classificationList"),
   reconciliationBadge: document.querySelector("#reconciliationBadge"),
   financeMetrics: document.querySelector("#financeMetrics"),
   accountForm: document.querySelector("#accountForm"),
@@ -891,6 +905,7 @@ function render() {
   renderSummary(stats);
   renderAlerts(stats);
   renderPlanning(stats);
+  renderIntelligence(stats);
   renderFinance(stats);
   renderExpenses();
   renderSettings();
@@ -1098,6 +1113,155 @@ function renderPlanning(stats) {
   dom.planningActions.innerHTML = actions.slice(0, 5).map((action) => `<li>${sanitizeText(action)}</li>`).join("");
 }
 
+function average(values) {
+  return values.length ? values.reduce((total, value) => total + Number(value || 0), 0) / values.length : 0;
+}
+
+function standardDeviation(values) {
+  if (values.length < 2) return 0;
+  const mean = average(values);
+  return Math.sqrt(values.reduce((total, value) => total + (value - mean) ** 2, 0) / (values.length - 1));
+}
+
+function median(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function expenseCycleKey(expense) {
+  const anchor = cycleAnchorForDate(expense.data_emissao);
+  return `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function calculateSpendingForecast(stats) {
+  const currentKey = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, "0")}`;
+  const totals = state.expenses.reduce((map, expense) => {
+    const key = expenseCycleKey(expense);
+    if (key >= currentKey) return map;
+    map.set(key, (map.get(key) || 0) + Number(expense.valor_total || 0));
+    return map;
+  }, new Map());
+  const history = [...totals.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-6).map(([, total]) => total);
+  const historicalMean = average(history);
+  const paceProjection = stats.position === "current" ? stats.projected : stats.position === "past" ? stats.total : historicalMean;
+  const forecast = history.length >= 2 ? paceProjection * 0.65 + historicalMean * 0.35 : paceProjection || historicalMean;
+  const deviation = standardDeviation(history);
+  const uncertainty = history.length >= 3 ? Math.max(forecast * 0.08, deviation * 1.28) : Math.max(forecast * 0.3, deviation);
+  const variation = historicalMean ? deviation / historicalMean : 1;
+  const confidence = history.length >= 6 && variation <= 0.25 ? "Alta" : history.length >= 3 && variation <= 0.5 ? "Média" : "Baixa";
+  return {
+    forecast: Math.max(0, forecast), lower: Math.max(0, forecast - uncertainty), upper: Math.max(0, forecast + uncertainty),
+    confidence, historyCount: history.length, historicalMean, deviation,
+  };
+}
+
+function forecastCashFlow(forecast, days, paceAdjustment = 0, incomeAdjustment = 0) {
+  const todayKey = localDateKey(todayLocal());
+  const assets = sum(state.accounts.filter((account) => account.includeNetWorth), (account) => accountBalance(account.id, todayKey));
+  const monthlyIncome = Math.max(0, Number(state.settings.monthlyIncome || 0) + Number(incomeAdjustment || 0));
+  const monthlyExpense = forecast.forecast * (1 + Number(paceAdjustment || 0) / 100);
+  const factor = days / 30;
+  return { days, income: monthlyIncome * factor, expense: monthlyExpense * factor, projectedBalance: assets + (monthlyIncome - monthlyExpense) * factor };
+}
+
+function normalizedMerchant(expense) {
+  return safeText(expense.fornecedor || expense.descricao, 160).toLowerCase().replace(/\d+/g, "").replace(/[^a-zà-ÿ ]/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function detectAnomalies() {
+  const expenses = state.expenses.filter((expense) => !String(expense.id).startsWith("sample-") || state.demoMode);
+  const values = expenses.map((expense) => Number(expense.valor_total || 0)).filter((value) => value > 0);
+  const center = median(values);
+  const mad = median(values.map((value) => Math.abs(value - center)));
+  const anomalies = [];
+  const seen = new Map();
+  expenses.forEach((expense) => {
+    const value = Number(expense.valor_total || 0);
+    const duplicateKey = `${expense.data_emissao}|${value.toFixed(2)}|${normalizedMerchant(expense)}`;
+    if (seen.has(duplicateKey)) anomalies.push({ expense, type: "Possível duplicidade", explanation: "Mesma data, valor e descrição de outro lançamento." });
+    else seen.set(duplicateKey, expense.id);
+    const threshold = mad ? center + mad * 4.5 : center * 2.2;
+    if (values.length >= 4 && value > threshold && value > center) anomalies.push({ expense, type: "Valor fora do padrão", explanation: `O valor ficou muito acima da mediana de ${currency(center)}.` });
+  });
+  return anomalies.slice(0, 12);
+}
+
+function detectSubscriptions() {
+  const groups = state.expenses.reduce((map, expense) => {
+    const key = normalizedMerchant(expense);
+    if (!key) return map;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(expense);
+    return map;
+  }, new Map());
+  const subscriptions = [];
+  groups.forEach((items, key) => {
+    const months = new Set(items.map((item) => item.data_emissao.slice(0, 7)));
+    const amounts = items.map((item) => Number(item.valor_total || 0));
+    const mean = average(amounts);
+    const variation = mean ? standardDeviation(amounts) / mean : 1;
+    if (months.size >= 2 && variation <= 0.12) subscriptions.push({ name: items[0].fornecedor || items[0].descricao || key, amount: mean, occurrences: items.length, confidence: months.size >= 3 ? 0.9 : 0.72 });
+  });
+  return subscriptions.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
+}
+
+function suggestExpenseCategory(expense) {
+  const text = `${expense.fornecedor} ${expense.descricao} ${expense.itens_resumo}`.toLowerCase();
+  const rules = [
+    ["Mercado", ["mercado", "supermercado", "hortifruti", "atacad"]],
+    ["Transporte", ["combust", "posto", "uber", "99 ", "ônibus", "estacion"]],
+    ["Moradia", ["aluguel", "condomínio", "energia", "água", "gás"]],
+    ["Saúde", ["farmácia", "medic", "consulta", "laboratório"]],
+    ["Educação", ["curso", "faculdade", "escola", "livro"]],
+    ["Assinaturas", ["stream", "assinatura", "netflix", "spotify", "cloud"]],
+    ["Lazer", ["cinema", "restaurante", "viagem", "show"]],
+  ];
+  const match = rules.find(([, keywords]) => keywords.some((keyword) => text.includes(keyword)));
+  return match ? { category: match[0], confidence: 0.86, reason: `Palavras do lançamento se relacionam com ${match[0]}.` } : { category: "Outros", confidence: 0.45, reason: "Não há informação suficiente para uma categoria mais específica." };
+}
+
+function renderIntelligence(stats) {
+  const forecast = calculateSpendingForecast(stats);
+  const horizons = [30, 60, 90].map((days) => forecastCashFlow(forecast, days));
+  dom.forecastConfidence.textContent = `Confiança ${forecast.confidence.toLowerCase()}`;
+  dom.forecastMetrics.innerHTML = [
+    ["Projeção central", currency(forecast.forecast)],
+    ["Limite inferior", currency(forecast.lower)],
+    ["Limite superior", currency(forecast.upper)],
+    ["Ciclos analisados", forecast.historyCount],
+  ].map(([label, value]) => `<article class="metric-card"><span>${sanitizeText(label)}</span><strong>${sanitizeText(value)}</strong></article>`).join("");
+  dom.forecastRange.textContent = `${currency(forecast.lower)} a ${currency(forecast.upper)}`;
+  dom.forecastRangeBar.style.width = `${Math.min(100, forecast.forecast ? (forecast.upper - forecast.lower) / forecast.forecast * 100 : 100)}%`;
+  dom.forecastExplanation.textContent = forecast.historyCount >= 3
+    ? `Estimativa baseada no ritmo do ciclo atual e nos últimos ${forecast.historyCount} ciclos. A faixa aumenta quando os gastos históricos variam mais.`
+    : "Ainda há pouco histórico. A faixa foi ampliada para deixar explícita a incerteza da estimativa.";
+  dom.forecastHorizons.innerHTML = horizons.map((item) => `<article class="finance-row"><div><strong>${item.days} dias</strong><span>Entradas ${currency(item.income)} · saídas ${currency(item.expense)}</span></div><strong class="${item.projectedBalance >= 0 ? "positive-value" : "negative-value"}">${currency(item.projectedBalance)}</strong></article>`).join("");
+
+  const anomalies = detectAnomalies();
+  dom.anomalyList.innerHTML = anomalies.length ? anomalies.map((item) => `<article class="finance-row"><div><strong>${sanitizeText(item.type)}: ${sanitizeText(item.expense.fornecedor || item.expense.descricao)}</strong><span>${sanitizeText(item.explanation)}</span></div><strong>${currency(item.expense.valor_total)}</strong></article>`).join("") : `<p class="muted">Nenhuma anomalia relevante foi identificada com os dados disponíveis.</p>`;
+  const subscriptions = detectSubscriptions();
+  dom.subscriptionList.innerHTML = subscriptions.length ? subscriptions.map((item) => `<article class="finance-row"><div><strong>${sanitizeText(item.name)}</strong><span>${item.occurrences} ocorrências · confiança ${Math.round(item.confidence * 100)}%</span></div><strong>${currency(item.amount)}/mês</strong></article>`).join("") : `<p class="muted">São necessários pelo menos dois meses semelhantes para sugerir uma assinatura.</p>`;
+
+  const classification = state.expenses.filter((expense) => expense.categoria === "Outros" || Number(expense.confianca_leitura || 0) < 0.75).slice(0, 12).map((expense) => ({ expense, suggestion: suggestExpenseCategory(expense) }));
+  dom.classificationBadge.textContent = classification.length ? `${classification.length} para revisar` : "Tudo revisado";
+  dom.classificationList.innerHTML = classification.length ? classification.map(({ expense, suggestion }) => `<article class="finance-row"><div><strong>${sanitizeText(expense.fornecedor || expense.descricao)}</strong><span>Sugestão: ${sanitizeText(suggestion.category)} · ${Math.round(suggestion.confidence * 100)}% · ${sanitizeText(suggestion.reason)}</span></div><button class="text-button" data-alert-expense-id="${expense.id}" type="button">Revisar</button></article>`).join("") : `<p class="muted">Nenhum lançamento precisa de classificação assistida.</p>`;
+  renderScenario(forecast);
+}
+
+function renderScenario(forecast = calculateSpendingForecast(getStats())) {
+  const pace = Number(dom.paceAdjustment.value || 0);
+  const incomeAdjustment = Number(dom.incomeAdjustment.value || 0);
+  const result = forecastCashFlow(forecast, 90, pace, incomeAdjustment);
+  dom.paceAdjustmentLabel.textContent = `${pace > 0 ? "+" : ""}${pace}%`;
+  dom.scenarioResult.innerHTML = [
+    ["Gastos estimados em 90 dias", currency(result.expense)],
+    ["Entradas estimadas em 90 dias", currency(result.income)],
+    ["Saldo ao final do cenário", currency(result.projectedBalance)],
+  ].map(([label, value]) => `<div class="summary-item"><span>${sanitizeText(label)}</span><strong>${sanitizeText(value)}</strong></div>`).join("");
+}
+
 function recordInSelectedCycle(date) {
   const parsed = parseLocalDate(date);
   const { start, endExclusive } = getCycleBounds();
@@ -1213,7 +1377,12 @@ function renderAlertCards(container, alerts) {
     card.className = `alert-card ${alert.type === "danger" ? "danger" : alert.type === "success" ? "success" : ""}`.trim();
     const text = document.createElement("span");
     text.textContent = alert.text;
-    card.append(text);
+    const content = document.createElement("div");
+    const explanation = document.createElement("small");
+    explanation.className = "alert-explanation";
+    explanation.textContent = alert.explanation || explainAlert(alert.text);
+    content.append(text, explanation);
+    card.append(content);
     if (alert.actionLabel) {
       const action = document.createElement("button");
       action.type = "button";
@@ -1225,6 +1394,16 @@ function renderAlertCards(container, alerts) {
     }
     container.append(card);
   });
+}
+
+function explainAlert(text) {
+  const value = String(text || "").toLowerCase();
+  if (value.includes("duplicada")) return "O aplicativo encontrou data, valor e descrição semelhantes em mais de um lançamento.";
+  if (value.includes("venc")) return "A data de vencimento informada está próxima ou já passou.";
+  if (value.includes("confiança")) return "Alguns campos do comprovante não puderam ser identificados com segurança suficiente.";
+  if (value.includes("orçamento") || value.includes("utilizou")) return "O total registrado foi comparado ao limite disponível no ciclo.";
+  if (value.includes("categoria")) return "Os gastos da categoria foram comparados ao limite configurado.";
+  return "Este alerta foi gerado a partir dos lançamentos e limites cadastrados.";
 }
 
 function renderExpenses() {
@@ -2426,6 +2605,8 @@ function bindEvents() {
     const button = event.target.closest("[data-restore-revision]");
     if (button) restoreCloudRevision(Number(button.dataset.restoreRevision));
   });
+  dom.paceAdjustment.addEventListener("input", () => renderScenario());
+  dom.incomeAdjustment.addEventListener("input", () => renderScenario());
   dom.settingsForm.addEventListener("submit", saveSettings);
   dom.expensesList.addEventListener("click", (event) => {
     const card = event.target.closest("[data-expense-id]");
@@ -2454,7 +2635,7 @@ function bindEvents() {
     closeOverlay(dom.filterDrawer);
     renderExpenses();
   });
-  [dom.homeAlerts, dom.alertsList].forEach((container) => container.addEventListener("click", handleAlertAction));
+  [dom.homeAlerts, dom.alertsList, dom.classificationList].forEach((container) => container.addEventListener("click", handleAlertAction));
   dom.toastAction.addEventListener("click", undoDelete);
   [dom.reviewModal, dom.detailModal, dom.filterDrawer].forEach((overlay) => {
     overlay.addEventListener("click", (event) => {

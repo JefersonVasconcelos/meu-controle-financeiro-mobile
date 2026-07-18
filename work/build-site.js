@@ -16,6 +16,7 @@ const fileTypes = {
   "og.png": "image/png",
   "og-phase2.png": "image/png",
   "og-phase3-secure.png": "image/png",
+  "og-phase4-intelligence.png": "image/png",
 };
 
 fs.mkdirSync(staticDir, { recursive: true });
