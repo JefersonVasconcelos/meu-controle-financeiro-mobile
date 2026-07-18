@@ -9,13 +9,13 @@
     />
     <meta name="theme-color" content="#0f2445" />
     <meta property="og:title" content="Meu Controle Financeiro" />
-    <meta property="og:description" content="Planeje hoje. Decida melhor amanhã." />
+    <meta property="og:description" content="Tudo conectado. Saldo sob controle." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og.png" />
+    <meta property="og:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase2.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Meu Controle Financeiro" />
-    <meta name="twitter:description" content="Planeje hoje. Decida melhor amanhã." />
-    <meta name="twitter:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og.png" />
+    <meta name="twitter:description" content="Tudo conectado. Saldo sob controle." />
+    <meta name="twitter:image" content="https://meu-controle-financeiro-mobile.vasconcelos-jeferson.chatgpt.site/og-phase2.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Meu Controle" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -51,6 +51,7 @@
         </div>
         <nav class="side-nav">
           <button class="nav-item is-active" data-view="home" type="button" aria-current="page">Início</button>
+          <button class="nav-item" data-view="finance" type="button">Finanças</button>
           <button class="nav-item" data-view="expenses" type="button">Gastos</button>
           <button class="nav-item" data-view="add" type="button">Adicionar</button>
           <button class="nav-item" data-view="alerts" type="button">Alertas</button>
@@ -167,6 +168,119 @@
           </section>
         </section>
 
+        <section id="financeView" class="view">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Fase 2</p>
+              <h2>Estrutura financeira</h2>
+            </div>
+            <span id="reconciliationBadge" class="badge">Sem pendências</span>
+          </div>
+
+          <section id="financeMetrics" class="metric-grid"></section>
+
+          <section class="finance-tabs" aria-label="Áreas financeiras">
+            <button class="secondary-button is-active" data-finance-tab="accounts" type="button">Contas</button>
+            <button class="secondary-button" data-finance-tab="income" type="button">Receitas</button>
+            <button class="secondary-button" data-finance-tab="transfers" type="button">Transferências</button>
+            <button class="secondary-button" data-finance-tab="cards" type="button">Cartões</button>
+            <button class="secondary-button" data-finance-tab="cashflow" type="button">Fluxo de caixa</button>
+            <button class="secondary-button" data-finance-tab="import" type="button">Importar</button>
+          </section>
+
+          <section id="accountsFinancePanel" class="finance-panel is-active">
+            <div class="section-grid">
+              <article class="panel">
+                <h2>Nova conta ou carteira</h2>
+                <form id="accountForm" class="form-grid compact-form">
+                  <label class="field"><span>Nome</span><input name="name" maxlength="80" required /></label>
+                  <label class="field"><span>Tipo</span><select name="type"><option>Conta corrente</option><option>Conta digital</option><option>Poupança</option><option>Carteira</option><option>Investimento</option></select></label>
+                  <label class="field"><span>Saldo inicial</span><input name="openingBalance" type="number" step="0.01" required /></label>
+                  <label class="field checkbox-field"><input name="includeNetWorth" type="checkbox" checked /><span>Incluir no patrimônio</span></label>
+                  <button class="primary-button field-full" type="submit">Adicionar conta</button>
+                </form>
+              </article>
+              <article class="panel">
+                <h2>Saldos por conta</h2>
+                <div id="accountsList" class="finance-list"></div>
+              </article>
+            </div>
+          </section>
+
+          <section id="incomeFinancePanel" class="finance-panel">
+            <div class="section-grid">
+              <article class="panel">
+                <h2>Registrar receita</h2>
+                <form id="incomeForm" class="form-grid compact-form">
+                  <label class="field"><span>Descrição</span><input name="description" maxlength="160" required /></label>
+                  <label class="field"><span>Valor</span><input name="amount" type="number" min="0.01" step="0.01" required /></label>
+                  <label class="field"><span>Data</span><input name="date" type="date" required /></label>
+                  <label class="field"><span>Conta de entrada</span><select name="accountId" required></select></label>
+                  <label class="field"><span>Repetir</span><select name="recurrenceMonths"><option value="1">Somente uma vez</option><option value="6">Mensal por 6 meses</option><option value="12">Mensal por 12 meses</option></select></label>
+                  <button class="primary-button field-full" type="submit">Salvar receita</button>
+                </form>
+              </article>
+              <article class="panel"><h2>Receitas registradas</h2><div id="incomeList" class="finance-list"></div></article>
+            </div>
+          </section>
+
+          <section id="transfersFinancePanel" class="finance-panel">
+            <div class="section-grid">
+              <article class="panel">
+                <h2>Transferir entre contas</h2>
+                <form id="transferForm" class="form-grid compact-form">
+                  <label class="field"><span>Descrição</span><input name="description" maxlength="160" value="Transferência" required /></label>
+                  <label class="field"><span>Valor</span><input name="amount" type="number" min="0.01" step="0.01" required /></label>
+                  <label class="field"><span>Data</span><input name="date" type="date" required /></label>
+                  <label class="field"><span>Conta de origem</span><select name="fromAccountId" required></select></label>
+                  <label class="field"><span>Conta de destino</span><select name="toAccountId" required></select></label>
+                  <button class="primary-button field-full" type="submit">Registrar transferência</button>
+                </form>
+              </article>
+              <article class="panel"><h2>Transferências</h2><div id="transferList" class="finance-list"></div></article>
+            </div>
+          </section>
+
+          <section id="cardsFinancePanel" class="finance-panel">
+            <div class="section-grid">
+              <article class="panel">
+                <h2>Novo cartão</h2>
+                <form id="cardForm" class="form-grid compact-form">
+                  <label class="field"><span>Nome do cartão</span><input name="name" maxlength="80" required /></label>
+                  <label class="field"><span>Conta para pagamento</span><select name="accountId" required></select></label>
+                  <label class="field"><span>Limite</span><input name="limit" type="number" min="0" step="0.01" required /></label>
+                  <label class="field"><span>Dia de fechamento</span><input name="closingDay" type="number" min="1" max="28" required /></label>
+                  <label class="field"><span>Dia de vencimento</span><input name="dueDay" type="number" min="1" max="28" required /></label>
+                  <button class="primary-button field-full" type="submit">Adicionar cartão</button>
+                </form>
+              </article>
+              <article class="panel"><h2>Faturas e limites</h2><div id="cardsList" class="finance-list"></div></article>
+            </div>
+          </section>
+
+          <section id="cashflowFinancePanel" class="finance-panel">
+            <section class="section-grid">
+              <article class="panel"><h2>Fluxo de caixa</h2><div id="cashflowSummary" class="summary-list"></div></article>
+              <article class="panel"><h2>Patrimônio líquido</h2><div id="netWorthSummary" class="summary-list"></div></article>
+            </section>
+            <article class="panel finance-panel-gap"><h2>Próximos 90 dias</h2><div id="cashflowTimeline" class="finance-list"></div></article>
+          </section>
+
+          <section id="importFinancePanel" class="finance-panel">
+            <article class="panel">
+              <h2>Conciliação e importação</h2>
+              <p class="muted">Importe CSV com data, descrição e valor ou um extrato OFX. Possíveis duplicidades serão ignoradas.</p>
+              <div class="form-grid compact-form">
+                <label class="field"><span>Conta de destino</span><select id="importAccount"></select></label>
+                <label class="field"><span>Arquivo CSV ou OFX</span><input id="statementFile" type="file" accept=".csv,.ofx,text/csv,application/x-ofx" /></label>
+              </div>
+              <div id="importPreview" class="finance-list"></div>
+              <button id="confirmImport" class="primary-button is-hidden" type="button">Confirmar importação conciliada</button>
+              <p id="importMessage" class="form-message" role="status"></p>
+            </article>
+          </section>
+        </section>
+
         <section id="expensesView" class="view">
           <div class="section-title">
             <div>
@@ -255,6 +369,22 @@
               <label class="field">
                 <span>Data de vencimento</span>
                 <input name="data_vencimento" type="date" />
+              </label>
+              <label class="field">
+                <span>Conta ou carteira</span>
+                <select name="account_id"></select>
+              </label>
+              <label class="field">
+                <span>Cartão</span>
+                <select name="card_id"></select>
+              </label>
+              <label class="field">
+                <span>Parcelas</span>
+                <input name="installments" type="number" min="1" max="24" value="1" />
+              </label>
+              <label class="field">
+                <span>Repetição</span>
+                <select name="recurrence_months"><option value="1">Somente esta vez</option><option value="6">Mensal por 6 meses</option><option value="12">Mensal por 12 meses</option></select>
               </label>
               <label class="field field-full">
                 <span>Observações</span>
@@ -404,9 +534,9 @@
 
       <nav class="bottom-nav" aria-label="Menu inferior">
         <button class="bottom-item is-active" data-view="home" type="button" aria-current="page"><span>Início</span></button>
+        <button class="bottom-item" data-view="finance" type="button"><span>Finanças</span></button>
         <button class="bottom-item" data-view="expenses" type="button"><span>Gastos</span></button>
         <button class="bottom-item add-button" data-view="add" type="button"><span>Adicionar</span></button>
-        <button class="bottom-item" data-view="alerts" type="button"><span>Alertas</span></button>
         <button class="bottom-item" data-view="planning" type="button"><span>Planejar</span></button>
         <button class="bottom-item" data-view="profile" type="button"><span>Perfil</span></button>
       </nav>

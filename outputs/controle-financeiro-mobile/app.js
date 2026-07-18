@@ -43,6 +43,7 @@ let toastTimer = null;
 let cloudSyncTimer = null;
 let cloudPollTimer = null;
 let cloudSyncPromise = null;
+let pendingStatementImport = [];
 
 const sampleExpenses = [
   {
@@ -184,6 +185,17 @@ const defaultState = {
       Assinaturas: 150,
     },
   },
+  accounts: [
+    { id: "sample-account-bank", name: "Conta principal", type: "Conta corrente", openingBalance: 2200, includeNetWorth: true, updated_at: "2026-07-01T00:00:00.000Z" },
+    { id: "sample-account-wallet", name: "Carteira", type: "Carteira", openingBalance: 180, includeNetWorth: true, updated_at: "2026-07-01T00:00:00.000Z" },
+  ],
+  incomes: [
+    { id: "sample-income-1", description: "Renda mensal", amount: 3500, date: "2026-07-05", accountId: "sample-account-bank", recurrenceGroup: "", updated_at: "2026-07-05T00:00:00.000Z" },
+  ],
+  transfers: [],
+  cards: [
+    { id: "sample-card-1", name: "Cartão principal", accountId: "sample-account-bank", limit: 2500, closingDay: 20, dueDay: 28, updated_at: "2026-07-01T00:00:00.000Z" },
+  ],
   expenses: sampleExpenses,
   deletedExpenses: [],
   demoMode: true,
@@ -237,6 +249,24 @@ const dom = {
   reserveSummary: document.querySelector("#reserveSummary"),
   categoryPlanning: document.querySelector("#categoryPlanning"),
   planningActions: document.querySelector("#planningActions"),
+  reconciliationBadge: document.querySelector("#reconciliationBadge"),
+  financeMetrics: document.querySelector("#financeMetrics"),
+  accountForm: document.querySelector("#accountForm"),
+  accountsList: document.querySelector("#accountsList"),
+  incomeForm: document.querySelector("#incomeForm"),
+  incomeList: document.querySelector("#incomeList"),
+  transferForm: document.querySelector("#transferForm"),
+  transferList: document.querySelector("#transferList"),
+  cardForm: document.querySelector("#cardForm"),
+  cardsList: document.querySelector("#cardsList"),
+  cashflowSummary: document.querySelector("#cashflowSummary"),
+  netWorthSummary: document.querySelector("#netWorthSummary"),
+  cashflowTimeline: document.querySelector("#cashflowTimeline"),
+  importAccount: document.querySelector("#importAccount"),
+  statementFile: document.querySelector("#statementFile"),
+  importPreview: document.querySelector("#importPreview"),
+  confirmImport: document.querySelector("#confirmImport"),
+  importMessage: document.querySelector("#importMessage"),
   expensesList: document.querySelector("#expensesList"),
   searchInput: document.querySelector("#searchInput"),
   staleBanner: document.querySelector("#staleBanner"),
@@ -306,6 +336,10 @@ function loadState() {
     const parsed = JSON.parse(saved);
     const base = structuredClone(defaultState);
     const expenses = Array.isArray(parsed.expenses) ? parsed.expenses.map((expense) => normalizeExpense(expense)) : base.expenses;
+    const accounts = normalizeRecords(parsed.accounts, normalizeAccount, base.accounts);
+    const incomes = normalizeRecords(parsed.incomes, normalizeIncome, base.incomes);
+    const transfers = normalizeRecords(parsed.transfers, normalizeTransfer, base.transfers);
+    const cards = normalizeRecords(parsed.cards, normalizeCard, base.cards);
     const demoMode = typeof parsed.demoMode === "boolean"
       ? parsed.demoMode
       : expenses.length > 0 && expenses.every((expense) => String(expense.id).startsWith("sample-"));
@@ -321,6 +355,10 @@ function loadState() {
     return {
       ...base,
       ...parsed,
+      accounts,
+      incomes,
+      transfers,
+      cards,
       expenses,
       deletedExpenses,
       demoMode,
@@ -355,6 +393,10 @@ function financialStateSnapshot(source = state) {
   const normalized = normalizeFinancialState(source);
   return {
     settings: normalized.settings,
+    accounts: normalized.accounts,
+    incomes: normalized.incomes,
+    transfers: normalized.transfers,
+    cards: normalized.cards,
     expenses: normalized.expenses,
     deletedExpenses: normalized.deletedExpenses,
     demoMode: normalized.demoMode,
@@ -384,8 +426,94 @@ function normalizeFinancialState(source) {
     if (!current || expense.updated_at >= current.updated_at) map.set(expense.id, expense);
     return map;
   }, new Map()).values()];
+  const accounts = normalizeRecords(input.accounts, normalizeAccount, []);
+  const incomes = normalizeRecords(input.incomes, normalizeIncome, []);
+  const transfers = normalizeRecords(input.transfers, normalizeTransfer, []);
+  const cards = normalizeRecords(input.cards, normalizeCard, []);
   const demoMode = Boolean(input.demoMode) && uniqueExpenses.every((expense) => String(expense.id).startsWith("sample-"));
-  return { settings, expenses: uniqueExpenses, deletedExpenses, demoMode };
+  return { settings, accounts, incomes, transfers, cards, expenses: uniqueExpenses, deletedExpenses, demoMode };
+}
+
+function normalizeRecords(records, normalizer, fallback = []) {
+  const input = Array.isArray(records) ? records : fallback;
+  return [...input.slice(0, 5000).reduce((map, record) => {
+    const normalized = normalizer(record);
+    if (!normalized) return map;
+    const current = map.get(normalized.id);
+    if (!current || normalized.updated_at >= current.updated_at) map.set(normalized.id, normalized);
+    return map;
+  }, new Map()).values()];
+}
+
+function safeRecordId(value) {
+  const id = safeText(value, 80);
+  return /^[a-zA-Z0-9_-]{1,80}$/.test(id) ? id : crypto.randomUUID();
+}
+
+function normalizeAccount(record) {
+  if (!record || typeof record !== "object") return null;
+  return {
+    id: safeRecordId(record.id),
+    name: safeText(record.name, 80) || "Conta",
+    type: ["Conta corrente", "Conta digital", "Poupança", "Carteira", "Investimento"].includes(record.type) ? record.type : "Conta corrente",
+    openingBalance: Math.max(-1000000000000, Math.min(1000000000000, Number(record.openingBalance || 0))),
+    includeNetWorth: record.includeNetWorth !== false,
+    updated_at: normalizeTimestamp(record.updated_at) || new Date().toISOString(),
+  };
+}
+
+function normalizeIncome(record) {
+  if (!record || typeof record !== "object") return null;
+  const amount = Math.max(0, Number(record.amount || 0));
+  if (!amount) return null;
+  return {
+    id: safeRecordId(record.id),
+    description: safeText(record.description, 160) || "Receita",
+    amount,
+    date: normalizeDate(record.date) || localDateKey(todayLocal()),
+    accountId: safeText(record.accountId, 80),
+    recurrenceGroup: safeText(record.recurrenceGroup, 80),
+    imported: Boolean(record.imported),
+    updated_at: normalizeTimestamp(record.updated_at) || new Date().toISOString(),
+  };
+}
+
+function normalizeTransfer(record) {
+  if (!record || typeof record !== "object") return null;
+  const amount = Math.max(0, Number(record.amount || 0));
+  const fromAccountId = safeText(record.fromAccountId, 80);
+  const toAccountId = safeText(record.toAccountId, 80);
+  if (!amount || !fromAccountId || !toAccountId || fromAccountId === toAccountId) return null;
+  return {
+    id: safeRecordId(record.id),
+    description: safeText(record.description, 160) || "Transferência",
+    amount,
+    date: normalizeDate(record.date) || localDateKey(todayLocal()),
+    fromAccountId,
+    toAccountId,
+    updated_at: normalizeTimestamp(record.updated_at) || new Date().toISOString(),
+  };
+}
+
+function normalizeCard(record) {
+  if (!record || typeof record !== "object") return null;
+  return {
+    id: safeRecordId(record.id),
+    name: safeText(record.name, 80) || "Cartão",
+    accountId: safeText(record.accountId, 80),
+    limit: Math.max(0, Number(record.limit || 0)),
+    closingDay: Math.min(28, Math.max(1, Math.round(Number(record.closingDay || 1)))),
+    dueDay: Math.min(28, Math.max(1, Math.round(Number(record.dueDay || 1)))),
+    updated_at: normalizeTimestamp(record.updated_at) || new Date().toISOString(),
+  };
+}
+
+function mergeRecords(baseRecords, incomingRecords) {
+  return [...[...baseRecords, ...incomingRecords].reduce((map, record) => {
+    const current = map.get(record.id);
+    if (!current || record.updated_at >= current.updated_at) map.set(record.id, record);
+    return map;
+  }, new Map()).values()];
 }
 
 function mergeFinancialStates(baseState, incomingState, preferIncomingSettings = true) {
@@ -401,6 +529,10 @@ function mergeFinancialStates(baseState, incomingState, preferIncomingSettings =
   const expenses = [...expenseMap.values()].filter((expense) => !deletedById.has(expense.id) || deletedById.get(expense.id) < expense.updated_at);
   return {
     settings: preferIncomingSettings ? incoming.settings : base.settings,
+    accounts: mergeRecords(base.accounts, incoming.accounts),
+    incomes: mergeRecords(base.incomes, incoming.incomes),
+    transfers: mergeRecords(base.transfers, incoming.transfers),
+    cards: mergeRecords(base.cards, incoming.cards),
     expenses,
     deletedExpenses: tombstones,
     demoMode: base.demoMode && incoming.demoMode && expenses.every((expense) => String(expense.id).startsWith("sample-")),
@@ -413,6 +545,10 @@ function applyFinancialState(snapshot) {
   state = {
     ...state,
     settings: { ...state.settings, ...normalized.settings, webhookUrl: localWebhookUrl },
+    accounts: normalized.accounts,
+    incomes: normalized.incomes,
+    transfers: normalized.transfers,
+    cards: normalized.cards,
     expenses: normalized.expenses,
     deletedExpenses: normalized.deletedExpenses,
     demoMode: normalized.demoMode,
@@ -749,6 +885,7 @@ function render() {
   renderSummary(stats);
   renderAlerts(stats);
   renderPlanning(stats);
+  renderFinance(stats);
   renderExpenses();
   renderSettings();
   drawCharts(stats);
@@ -953,6 +1090,114 @@ function renderPlanning(stats) {
   if (health.income && health.savingsRate < 0.2) actions.push("Busque uma taxa de poupança próxima de 20% da renda, ajustando-a à sua realidade.");
   if (!actions.length) actions.push("Mantenha os limites atuais e revise o planejamento no próximo ciclo.");
   dom.planningActions.innerHTML = actions.slice(0, 5).map((action) => `<li>${sanitizeText(action)}</li>`).join("");
+}
+
+function recordInSelectedCycle(date) {
+  const parsed = parseLocalDate(date);
+  const { start, endExclusive } = getCycleBounds();
+  return parsed && parsed >= start && parsed < endExclusive;
+}
+
+function accountBalance(accountId, throughDate = "9999-12-31") {
+  const account = state.accounts.find((item) => item.id === accountId);
+  if (!account) return 0;
+  const income = sum(state.incomes.filter((item) => item.accountId === accountId && item.date <= throughDate), (item) => item.amount);
+  const expenses = sum(state.expenses.filter((item) => item.account_id === accountId && !item.card_id && item.status_pagamento === "Pago" && item.data_emissao <= throughDate), (item) => item.valor_total);
+  const transfersIn = sum(state.transfers.filter((item) => item.toAccountId === accountId && item.date <= throughDate), (item) => item.amount);
+  const transfersOut = sum(state.transfers.filter((item) => item.fromAccountId === accountId && item.date <= throughDate), (item) => item.amount);
+  return Number(account.openingBalance || 0) + income + transfersIn - transfersOut - expenses;
+}
+
+function cardBill(cardId) {
+  return sum(selectedExpenses().filter((expense) => expense.card_id === cardId), (expense) => expense.valor_total);
+}
+
+function renderFinance(stats) {
+  const todayKey = localDateKey(todayLocal());
+  const incomeCycle = sum(state.incomes.filter((item) => recordInSelectedCycle(item.date)), (item) => item.amount);
+  const accountTotal = sum(state.accounts.filter((item) => item.includeNetWorth), (item) => accountBalance(item.id, todayKey));
+  const cardDebt = sum(state.cards, (card) => cardBill(card.id));
+  const netWorth = accountTotal - cardDebt;
+  const unresolved = state.expenses.filter((expense) => !String(expense.id).startsWith("sample-") && !expense.account_id && !expense.card_id).length;
+  dom.reconciliationBadge.textContent = unresolved ? `${unresolved} ${unresolved === 1 ? "lançamento sem conta" : "lançamentos sem conta"}` : "Sem pendências";
+
+  const metrics = [
+    ["Saldo em contas", currency(accountTotal)],
+    ["Receitas do ciclo", currency(incomeCycle)],
+    ["Faturas do ciclo", currency(cardDebt)],
+    ["Patrimônio líquido", currency(netWorth)],
+  ];
+  dom.financeMetrics.innerHTML = metrics.map(([label, value]) => `<article class="metric-card"><span>${sanitizeText(label)}</span><strong>${sanitizeText(value)}</strong></article>`).join("");
+
+  dom.accountsList.innerHTML = state.accounts.length ? state.accounts.map((account) => `
+    <article class="finance-row">
+      <div><strong>${sanitizeText(account.name)}</strong><span>${sanitizeText(account.type)}</span></div>
+      <strong>${currency(accountBalance(account.id, todayKey))}</strong>
+    </article>`).join("") : `<p class="muted">Adicione sua primeira conta ou carteira.</p>`;
+
+  dom.incomeList.innerHTML = state.incomes.length ? [...state.incomes].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20).map((income) => `
+    <article class="finance-row">
+      <div><strong>${sanitizeText(income.description)}</strong><span>${dateBR(income.date)} · ${sanitizeText(accountName(income.accountId))}</span></div>
+      <strong class="positive-value">+ ${currency(income.amount)}</strong>
+    </article>`).join("") : `<p class="muted">Nenhuma receita registrada.</p>`;
+
+  dom.transferList.innerHTML = state.transfers.length ? [...state.transfers].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20).map((transfer) => `
+    <article class="finance-row">
+      <div><strong>${sanitizeText(transfer.description)}</strong><span>${dateBR(transfer.date)} · ${sanitizeText(accountName(transfer.fromAccountId))} → ${sanitizeText(accountName(transfer.toAccountId))}</span></div>
+      <strong>${currency(transfer.amount)}</strong>
+    </article>`).join("") : `<p class="muted">Nenhuma transferência registrada.</p>`;
+
+  dom.cardsList.innerHTML = state.cards.length ? state.cards.map((card) => {
+    const bill = cardBill(card.id);
+    const used = card.limit ? bill / card.limit * 100 : 0;
+    return `<article class="card-summary"><div class="row-between"><div><strong>${sanitizeText(card.name)}</strong><span>Fecha dia ${card.closingDay} · vence dia ${card.dueDay}</span></div><strong>${currency(bill)}</strong></div><div class="progress-track"><div class="progress-fill" style="width:${Math.min(100, used)}%;background:${getBudgetColor(used)}"></div></div><small>${currency(Math.max(0, card.limit - bill))} de limite disponível</small></article>`;
+  }).join("") : `<p class="muted">Nenhum cartão cadastrado.</p>`;
+
+  const cycleBalance = incomeCycle - stats.total;
+  dom.cashflowSummary.innerHTML = [
+    ["Entradas no ciclo", currency(incomeCycle)],
+    ["Saídas no ciclo", currency(stats.total)],
+    ["Resultado do ciclo", currency(cycleBalance)],
+    ["Contas pendentes", currency(stats.pending)],
+  ].map(([label, value]) => `<div class="summary-item"><span>${sanitizeText(label)}</span><strong>${sanitizeText(value)}</strong></div>`).join("");
+  dom.netWorthSummary.innerHTML = [
+    ["Ativos em contas", currency(accountTotal)],
+    ["Faturas consideradas", currency(cardDebt)],
+    ["Patrimônio líquido", currency(netWorth)],
+    ["Contas incluídas", state.accounts.filter((item) => item.includeNetWorth).length],
+  ].map(([label, value]) => `<div class="summary-item"><span>${sanitizeText(label)}</span><strong>${sanitizeText(value)}</strong></div>`).join("");
+
+  const monthAnchor = new Date(todayLocal().getFullYear(), todayLocal().getMonth(), 1);
+  dom.cashflowTimeline.innerHTML = [0, 1, 2].map((offset) => {
+    const start = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + offset, 1);
+    const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    const startKey = localDateKey(start);
+    const endKey = localDateKey(end);
+    const income = sum(state.incomes.filter((item) => item.date >= startKey && item.date < endKey), (item) => item.amount);
+    const expense = sum(state.expenses.filter((item) => item.data_emissao >= startKey && item.data_emissao < endKey), (item) => item.valor_total);
+    return `<article class="finance-row"><div><strong>${start.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong><span>Entradas ${currency(income)} · saídas ${currency(expense)}</span></div><strong class="${income - expense >= 0 ? "positive-value" : "negative-value"}">${currency(income - expense)}</strong></article>`;
+  }).join("");
+
+  refreshFinancialSelects();
+}
+
+function accountName(id) {
+  return state.accounts.find((account) => account.id === id)?.name || "Sem conta";
+}
+
+function refreshFinancialSelects() {
+  const accountOptions = state.accounts.map((account) => `<option value="${account.id}">${sanitizeText(account.name)}</option>`).join("");
+  [dom.incomeForm?.accountId, dom.transferForm?.fromAccountId, dom.transferForm?.toAccountId, dom.cardForm?.accountId, dom.importAccount, dom.manualForm?.account_id].forEach((select) => {
+    if (!select) return;
+    const previous = select.value;
+    select.innerHTML = `${select === dom.manualForm?.account_id ? '<option value="">Sem conta vinculada</option>' : ""}${accountOptions}`;
+    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+  });
+  if (dom.manualForm?.card_id) {
+    const previous = dom.manualForm.card_id.value;
+    dom.manualForm.card_id.innerHTML = `<option value="">Sem cartão</option>${state.cards.map((card) => `<option value="${card.id}">${sanitizeText(card.name)}</option>`).join("")}`;
+    if ([...dom.manualForm.card_id.options].some((option) => option.value === previous)) dom.manualForm.card_id.value = previous;
+  }
 }
 
 function renderAlertCards(container, alerts) {
@@ -1223,6 +1468,187 @@ function createExpenseFromForm(form, origin) {
   });
 }
 
+function addMonthsToDateKey(dateKey, months) {
+  const parsed = parseLocalDate(dateKey) || todayLocal();
+  const targetMonth = new Date(parsed.getFullYear(), parsed.getMonth() + months, 1);
+  const day = Math.min(parsed.getDate(), daysInMonth(targetMonth));
+  return localDateKey(new Date(targetMonth.getFullYear(), targetMonth.getMonth(), day));
+}
+
+function createExpenseSeries(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+  const installments = Math.max(1, Math.min(24, Math.round(Number(data.installments || 1))));
+  const recurrenceMonths = installments > 1 ? 1 : Math.max(1, Math.min(12, Math.round(Number(data.recurrence_months || 1))));
+  const count = Math.max(installments, recurrenceMonths);
+  const groupId = count > 1 ? crypto.randomUUID() : "";
+  const originalTotal = Math.max(0, Number(data.valor_total || 0));
+  const amount = installments > 1 ? Math.round(originalTotal / installments * 100) / 100 : originalTotal;
+  return Array.from({ length: count }, (_, index) => normalizeExpense({
+    ...data,
+    id: crypto.randomUUID(),
+    descricao: installments > 1 ? `${data.descricao} (${index + 1}/${installments})` : data.descricao,
+    data_emissao: addMonthsToDateKey(data.data_emissao, index),
+    data_vencimento: data.data_vencimento ? addMonthsToDateKey(data.data_vencimento, index) : "",
+    valor_total: index === installments - 1 ? Math.round((originalTotal - amount * (installments - 1)) * 100) / 100 : amount,
+    valor_produtos: index === installments - 1 ? Math.round((originalTotal - amount * (installments - 1)) * 100) / 100 : amount,
+    account_id: data.card_id ? "" : data.account_id,
+    installment_group: installments > 1 ? groupId : "",
+    installment_number: installments > 1 ? index + 1 : 1,
+    installment_total: installments,
+    recurrence_group: recurrenceMonths > 1 ? groupId : "",
+    status_pagamento: data.card_id ? "Pendente" : data.status_pagamento,
+    origem: installments > 1 ? "Registro manual" : recurrenceMonths > 1 ? "Registro manual" : "Registro manual",
+    updated_at: new Date().toISOString(),
+  }));
+}
+
+function setFinanceTab(tab) {
+  document.querySelectorAll(".finance-panel").forEach((panel) => panel.classList.toggle("is-active", panel.id === `${tab}FinancePanel`));
+  document.querySelectorAll("[data-finance-tab]").forEach((button) => button.classList.toggle("is-active", button.dataset.financeTab === tab));
+}
+
+function handleAccountSubmit(event) {
+  event.preventDefault();
+  if (!dom.accountForm.reportValidity()) return;
+  prepareForRealData();
+  const data = Object.fromEntries(new FormData(dom.accountForm).entries());
+  state.accounts.push(normalizeAccount({ ...data, id: crypto.randomUUID(), includeNetWorth: data.includeNetWorth === "on", updated_at: new Date().toISOString() }));
+  dom.accountForm.reset();
+  dom.accountForm.includeNetWorth.checked = true;
+  markCloudChange();
+  render();
+  showToast("Conta adicionada e pronta para sincronizar.");
+}
+
+function handleIncomeSubmit(event) {
+  event.preventDefault();
+  if (!dom.incomeForm.reportValidity()) return;
+  prepareForRealData();
+  const data = Object.fromEntries(new FormData(dom.incomeForm).entries());
+  const count = Math.max(1, Math.min(12, Number(data.recurrenceMonths || 1)));
+  const groupId = count > 1 ? crypto.randomUUID() : "";
+  const records = Array.from({ length: count }, (_, index) => normalizeIncome({
+    id: crypto.randomUUID(), description: data.description, amount: data.amount,
+    date: addMonthsToDateKey(data.date, index), accountId: data.accountId,
+    recurrenceGroup: groupId, updated_at: new Date().toISOString(),
+  })).filter(Boolean);
+  state.incomes.push(...records);
+  dom.incomeForm.reset();
+  dom.incomeForm.date.value = localDateKey(todayLocal());
+  markCloudChange();
+  render();
+  showToast(records.length > 1 ? `${records.length} receitas programadas.` : "Receita registrada.");
+}
+
+function handleTransferSubmit(event) {
+  event.preventDefault();
+  if (!dom.transferForm.reportValidity()) return;
+  const data = Object.fromEntries(new FormData(dom.transferForm).entries());
+  if (data.fromAccountId === data.toAccountId) {
+    showToast("Escolha contas diferentes para a transferência.");
+    return;
+  }
+  prepareForRealData();
+  const transfer = normalizeTransfer({ ...data, id: crypto.randomUUID(), updated_at: new Date().toISOString() });
+  if (!transfer) return;
+  state.transfers.push(transfer);
+  dom.transferForm.reset();
+  dom.transferForm.date.value = localDateKey(todayLocal());
+  markCloudChange();
+  render();
+  showToast("Transferência registrada sem alterar receitas ou despesas.");
+}
+
+function handleCardSubmit(event) {
+  event.preventDefault();
+  if (!dom.cardForm.reportValidity()) return;
+  prepareForRealData();
+  const data = Object.fromEntries(new FormData(dom.cardForm).entries());
+  state.cards.push(normalizeCard({ ...data, id: crypto.randomUUID(), updated_at: new Date().toISOString() }));
+  dom.cardForm.reset();
+  markCloudChange();
+  render();
+  showToast("Cartão adicionado.");
+}
+
+function parseStatementDate(value) {
+  const text = safeText(value, 32);
+  const ofx = text.match(/^(\d{4})(\d{2})(\d{2})/);
+  if (ofx) return `${ofx[1]}-${ofx[2]}-${ofx[3]}`;
+  const br = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (br) return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+  return normalizeDate(text);
+}
+
+function parseCsvStatement(text) {
+  const lines = String(text).replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const delimiter = (lines[0].match(/;/g) || []).length >= (lines[0].match(/,/g) || []).length ? ";" : ",";
+  const headers = lines[0].split(delimiter).map((item) => item.trim().toLowerCase());
+  const indexOf = (names) => headers.findIndex((header) => names.some((name) => header.includes(name)));
+  const dateIndex = indexOf(["data", "date"]);
+  const descriptionIndex = indexOf(["descr", "hist", "memo", "lançamento", "lancamento"]);
+  const amountIndex = indexOf(["valor", "amount", "quantia"]);
+  if (dateIndex < 0 || amountIndex < 0) return [];
+  return lines.slice(1).map((line) => {
+    const columns = line.split(delimiter).map((item) => item.replace(/^"|"$/g, "").trim());
+    const rawAmount = columns[amountIndex] || "";
+    const amount = parseMoney(rawAmount.replace(/\s/g, ""));
+    const negative = /^-/.test(rawAmount) || /débito|debito/i.test(line);
+    return { date: parseStatementDate(columns[dateIndex]), description: safeText(columns[descriptionIndex] || "Lançamento importado", 160), amount: negative ? -Math.abs(amount) : Math.abs(amount) };
+  }).filter((item) => item.date && item.amount);
+}
+
+function parseOfxStatement(text) {
+  return [...String(text).matchAll(/<STMTTRN>([\s\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>|<\/BANKTRANLIST>))/gi)].map((match) => {
+    const block = match[1];
+    const value = (tag) => block.match(new RegExp(`<${tag}>([^<\\r\\n]+)`, "i"))?.[1]?.trim() || "";
+    const amount = Number(value("TRNAMT").replace(",", "."));
+    return { date: parseStatementDate(value("DTPOSTED")), description: safeText(value("MEMO") || value("NAME") || "Lançamento OFX", 160), amount };
+  }).filter((item) => item.date && Number.isFinite(item.amount) && item.amount !== 0);
+}
+
+function statementKey(item) {
+  return `${item.date}|${Math.abs(Number(item.amount)).toFixed(2)}|${safeText(item.description, 160).toLowerCase().replace(/\s+/g, " ")}`;
+}
+
+async function handleStatementFile(event) {
+  const file = event.target.files?.[0];
+  pendingStatementImport = [];
+  dom.confirmImport.classList.add("is-hidden");
+  if (!file) return;
+  const text = await file.text();
+  const parsed = /\.ofx$/i.test(file.name) || /<OFX/i.test(text) ? parseOfxStatement(text) : parseCsvStatement(text);
+  const existing = new Set([
+    ...state.expenses.map((item) => statementKey({ date: item.data_emissao, amount: -item.valor_total, description: item.descricao })),
+    ...state.incomes.map((item) => statementKey({ date: item.date, amount: item.amount, description: item.description })),
+  ]);
+  pendingStatementImport = parsed.map((item) => ({ ...item, duplicate: existing.has(statementKey(item)) }));
+  const newCount = pendingStatementImport.filter((item) => !item.duplicate).length;
+  dom.importPreview.innerHTML = pendingStatementImport.length ? pendingStatementImport.slice(0, 100).map((item) => `<article class="finance-row ${item.duplicate ? "is-duplicate" : ""}"><div><strong>${sanitizeText(item.description)}</strong><span>${dateBR(item.date)} · ${item.duplicate ? "possível duplicidade" : "novo lançamento"}</span></div><strong class="${item.amount >= 0 ? "positive-value" : "negative-value"}">${item.amount >= 0 ? "+ " : "- "}${currency(Math.abs(item.amount))}</strong></article>`).join("") : `<p class="muted">Nenhum lançamento reconhecido. Confira se o arquivo possui data, descrição e valor.</p>`;
+  dom.importMessage.textContent = `${parsed.length} lançamentos lidos; ${newCount} prontos para importar.`;
+  dom.confirmImport.classList.toggle("is-hidden", newCount === 0 || !dom.importAccount.value);
+}
+
+function confirmStatementImport() {
+  const accountId = dom.importAccount.value;
+  if (!accountId) return;
+  prepareForRealData();
+  const items = pendingStatementImport.filter((item) => !item.duplicate);
+  items.forEach((item) => {
+    if (item.amount > 0) state.incomes.push(normalizeIncome({ id: crypto.randomUUID(), description: item.description, amount: item.amount, date: item.date, accountId, imported: true, updated_at: new Date().toISOString() }));
+    else state.expenses.push(normalizeExpense({ id: crypto.randomUUID(), descricao: item.description, valor_total: Math.abs(item.amount), valor_produtos: Math.abs(item.amount), data_emissao: item.date, data_registro: localDateKey(todayLocal()), categoria: "Outros", forma_pagamento: "Transferência", status_pagamento: "Pago", account_id: accountId, origem: "Registro manual", imported: true, updated_at: new Date().toISOString() }));
+  });
+  pendingStatementImport = [];
+  dom.statementFile.value = "";
+  dom.confirmImport.classList.add("is-hidden");
+  dom.importPreview.innerHTML = "";
+  dom.importMessage.textContent = `${items.length} lançamentos importados e conciliados.`;
+  markCloudChange();
+  render();
+  showToast("Extrato importado com verificação de duplicidades.");
+}
+
 function normalizeExpense(data) {
   const source = data && typeof data === "object" ? data : {};
   const total = Math.max(0, parseMoney(pickValue(source, ["valor_total", "valorTotal", "total", "valor", "valor_compra", "valor_gasto", "amount"])));
@@ -1271,6 +1697,13 @@ function normalizeExpense(data) {
     observacoes: safeText(pickValue(source, ["observacoes", "observacao", "obs"]), 1000),
     itens_resumo: safeText(pickValue(source, ["itens_resumo", "itensResumo", "resumo_itens"]), 1000) || summarizeItems(items),
     qtd_itens: Math.max(0, Math.min(999, Number(pickValue(source, ["qtd_itens", "qtdItens", "quantidade_itens"]) || items.length))),
+    account_id: safeText(source.account_id || source.accountId, 80),
+    card_id: safeText(source.card_id || source.cardId, 80),
+    installment_group: safeText(source.installment_group || source.installmentGroup, 80),
+    installment_number: Math.max(1, Math.min(24, Math.round(Number(source.installment_number || source.installmentNumber || 1)))),
+    installment_total: Math.max(1, Math.min(24, Math.round(Number(source.installment_total || source.installmentTotal || 1)))),
+    recurrence_group: safeText(source.recurrence_group || source.recurrenceGroup, 80),
+    imported: Boolean(source.imported),
     origem: origin,
     updated_at: normalizeTimestamp(source.updated_at || source.updatedAt) || (hasSafeSourceId ? `${registrationDate}T00:00:00.000Z` : new Date().toISOString()),
   };
@@ -1772,6 +2205,10 @@ function undoDelete() {
 function prepareForRealData() {
   if (!state.demoMode) return;
   state.expenses = state.expenses.filter((expense) => !String(expense.id).startsWith("sample-"));
+  state.accounts = state.accounts.filter((item) => !String(item.id).startsWith("sample-"));
+  state.incomes = state.incomes.filter((item) => !String(item.id).startsWith("sample-"));
+  state.transfers = state.transfers.filter((item) => !String(item.id).startsWith("sample-"));
+  state.cards = state.cards.filter((item) => !String(item.id).startsWith("sample-"));
   state.demoMode = false;
 }
 
@@ -1867,10 +2304,11 @@ function bindEvents() {
   dom.sendReceipt.addEventListener("click", sendReceipt);
   dom.manualForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const expense = createExpenseFromForm(dom.manualForm, "Registro manual");
+    const expenses = createExpenseSeries(dom.manualForm);
+    const expense = expenses[0];
     prepareForRealData();
-    state.expenses.unshift(expense);
-    state.deletedExpenses = state.deletedExpenses.filter((item) => item.id !== expense.id);
+    state.expenses.unshift(...expenses);
+    state.deletedExpenses = state.deletedExpenses.filter((item) => !expenses.some((expenseItem) => item.id === expenseItem.id));
     markCloudChange();
     dom.manualForm.reset();
     dom.manualForm.data_emissao.value = localDateKey(todayLocal());
@@ -1878,8 +2316,15 @@ function bindEvents() {
     selectedMonth = cycleAnchorForDate(expense.data_emissao);
     render();
     setView("home");
-    showToast("Gasto salvo e pronto para sincronizar.");
+    showToast(expenses.length > 1 ? `${expenses.length} lançamentos criados e prontos para sincronizar.` : "Gasto salvo e pronto para sincronizar.");
   });
+  document.querySelectorAll("[data-finance-tab]").forEach((button) => button.addEventListener("click", () => setFinanceTab(button.dataset.financeTab)));
+  dom.accountForm.addEventListener("submit", handleAccountSubmit);
+  dom.incomeForm.addEventListener("submit", handleIncomeSubmit);
+  dom.transferForm.addEventListener("submit", handleTransferSubmit);
+  dom.cardForm.addEventListener("submit", handleCardSubmit);
+  dom.statementFile.addEventListener("change", handleStatementFile);
+  dom.confirmImport.addEventListener("click", confirmStatementImport);
   dom.settingsForm.addEventListener("submit", saveSettings);
   dom.expensesList.addEventListener("click", (event) => {
     const card = event.target.closest("[data-expense-id]");
@@ -2095,6 +2540,8 @@ function initForms() {
   populateSelects();
   dom.manualForm.data_emissao.value = localDateKey(todayLocal());
   dom.manualForm.status_pagamento.value = "Pago";
+  dom.incomeForm.date.value = localDateKey(todayLocal());
+  dom.transferForm.date.value = localDateKey(todayLocal());
   Object.entries(state.filters).forEach(([key, value]) => {
     if (dom.filterForm.elements[key]) dom.filterForm.elements[key].value = value;
   });
