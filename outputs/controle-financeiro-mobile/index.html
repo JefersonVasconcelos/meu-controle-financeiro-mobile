@@ -27,8 +27,9 @@
         </p>
         <label class="field">
           <span>PIN</span>
-          <input id="pinInput" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" placeholder="4 ou mais digitos" />
+          <input id="pinInput" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" placeholder="4 ou mais dígitos" aria-describedby="pinHelp" />
         </label>
+        <p id="pinHelp" class="helper-text">O PIN é protegido neste dispositivo. Seus dados financeiros também ficam somente nele.</p>
         <button id="authButton" class="primary-button" type="button">Entrar</button>
         <p id="authMessage" class="form-message" role="status"></p>
       </section>
@@ -37,11 +38,11 @@
     <div id="appShell" class="app-shell is-hidden">
       <aside class="sidebar" aria-label="Menu lateral">
         <div>
-          <p class="eyebrow">Financas pessoais</p>
+          <p class="eyebrow">Finanças pessoais</p>
           <h2>Meu Controle Financeiro</h2>
         </div>
         <nav class="side-nav">
-          <button class="nav-item is-active" data-view="home" type="button">Inicio</button>
+          <button class="nav-item is-active" data-view="home" type="button" aria-current="page">Início</button>
           <button class="nav-item" data-view="expenses" type="button">Gastos</button>
           <button class="nav-item" data-view="add" type="button">Adicionar</button>
           <button class="nav-item" data-view="alerts" type="button">Alertas</button>
@@ -56,37 +57,43 @@
             <h1>Meu Controle Financeiro</h1>
           </div>
           <div class="topbar-actions">
-            <button id="refreshData" class="refresh-data-button" type="button" aria-label="Atualizar dados">
-              Atualizar dados
+            <button id="refreshData" class="refresh-data-button" type="button" aria-label="Recarregar painel com os dados deste dispositivo">
+              Recarregar painel
             </button>
-            <div class="month-switcher" aria-label="Selecionar mes">
-              <button id="prevMonth" class="icon-button" type="button" aria-label="Mes anterior">&lt;</button>
+            <button id="lockApp" class="secondary-button compact-button" type="button">Bloquear</button>
+            <div class="month-switcher" aria-label="Selecionar ciclo financeiro">
+              <button id="prevMonth" class="icon-button" type="button" aria-label="Ciclo anterior">&lt;</button>
               <strong id="currentMonthLabel"></strong>
-              <button id="nextMonth" class="icon-button" type="button" aria-label="Proximo mes">&gt;</button>
+              <button id="nextMonth" class="icon-button" type="button" aria-label="Próximo ciclo">&gt;</button>
             </div>
           </div>
         </header>
 
         <section id="homeView" class="view is-active">
+          <div id="demoBanner" class="status-banner demo-banner is-hidden" role="status">
+            <span><strong>Dados de demonstração.</strong> Estes gastos são exemplos e não representam suas finanças.</span>
+            <button id="clearDemoData" type="button">Começar com meus dados</button>
+          </div>
+
           <div id="staleBanner" class="status-banner is-hidden">
-            Dashboard desatualizado. <button id="refreshDashboard" type="button">Atualizar</button>
+            Há alterações locais para revisar. <button id="refreshDashboard" type="button">Recarregar painel</button>
           </div>
 
           <section class="hero-panel">
             <div>
-              <p class="eyebrow">Saldo disponivel</p>
+              <p class="eyebrow">Orçamento restante</p>
               <h2 id="availableValue">R$ 0,00</h2>
               <p id="budgetHint" class="muted">Defina um limite mensal para acompanhar seus gastos.</p>
             </div>
-            <div class="budget-ring" aria-label="Percentual utilizado">
-              <canvas id="budgetRing" width="150" height="150"></canvas>
+            <div class="budget-ring" aria-label="Percentual do orçamento para gastar já utilizado">
+              <canvas id="budgetRing" width="150" height="150" role="img" aria-label="Percentual utilizado do orçamento para gastar"></canvas>
               <span id="budgetPercent">0%</span>
             </div>
           </section>
 
           <section class="progress-card">
             <div class="row-between">
-              <span>Limite mensal</span>
+              <span>Orçamento para gastar</span>
               <strong id="budgetValue">R$ 0,00</strong>
             </div>
             <div class="progress-track" aria-hidden="true">
@@ -96,6 +103,10 @@
               <span id="spentValue">Gasto: R$ 0,00</span>
               <span id="remainingDays"></span>
             </div>
+            <div class="row-between small-text savings-row">
+              <span>Meta de economia protegida</span>
+              <strong id="savingsValue">R$ 0,00</strong>
+            </div>
           </section>
 
           <section class="metric-grid" id="metricsGrid"></section>
@@ -103,8 +114,8 @@
           <section class="section-grid">
             <article class="panel">
               <div class="section-title">
-                <h2>Resumo do mes</h2>
-                <span id="monthComparisonBadge" class="badge">Sem comparacao</span>
+                <h2>Resumo do ciclo</h2>
+                <span id="monthComparisonBadge" class="badge">Sem comparação</span>
               </div>
               <div id="summaryList" class="summary-list"></div>
             </article>
@@ -121,19 +132,23 @@
           <section class="charts-grid">
             <article class="panel chart-panel">
               <h2>Gastos por categoria</h2>
-              <canvas id="categoryChart" height="220"></canvas>
+              <canvas id="categoryChart" height="220" role="img" aria-describedby="categoryChartSummary"></canvas>
+              <p id="categoryChartSummary" class="chart-summary"></p>
             </article>
             <article class="panel chart-panel">
               <h2>Gastos por semana</h2>
-              <canvas id="weekChart" height="220"></canvas>
+              <canvas id="weekChart" height="220" role="img" aria-describedby="weekChartSummary"></canvas>
+              <p id="weekChartSummary" class="chart-summary"></p>
             </article>
             <article class="panel chart-panel">
-              <h2>Evolucao no mes</h2>
-              <canvas id="evolutionChart" height="220"></canvas>
+              <h2>Evolução no ciclo</h2>
+              <canvas id="evolutionChart" height="220" role="img" aria-describedby="evolutionChartSummary"></canvas>
+              <p id="evolutionChartSummary" class="chart-summary"></p>
             </article>
             <article class="panel chart-panel">
               <h2>Pago e pendente</h2>
-              <canvas id="statusChart" height="220"></canvas>
+              <canvas id="statusChart" height="220" role="img" aria-describedby="statusChartSummary"></canvas>
+              <p id="statusChartSummary" class="chart-summary"></p>
             </article>
           </section>
         </section>
@@ -148,7 +163,7 @@
           </div>
           <label class="search-box">
             <span>Buscar</span>
-            <input id="searchInput" type="search" placeholder="Estabelecimento, descricao, categoria ou numero da nota" />
+            <input id="searchInput" type="search" placeholder="Estabelecimento, descrição, categoria ou número da nota" />
           </label>
           <div id="expensesList" class="expense-list"></div>
         </section>
@@ -175,7 +190,7 @@
           <section id="uploadPanel" class="panel">
             <h2>Enviar Comprovante</h2>
             <p class="muted">
-              Tire uma foto legivel da nota fiscal ou selecione uma imagem. Os dados da compra serao preenchidos automaticamente.
+              Tire uma foto legível da nota fiscal ou selecione uma imagem. Os dados da compra serão preenchidos automaticamente.
             </p>
             <div class="upload-box" id="dropZone">
               <input id="receiptInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" capture="environment" />
@@ -183,7 +198,7 @@
                 <strong>Tirar foto ou escolher imagem</strong>
                 <span>JPG, JPEG, PNG ou WEBP</span>
               </div>
-              <img id="receiptPreview" class="receipt-preview is-hidden" alt="Previa do comprovante" />
+              <img id="receiptPreview" class="receipt-preview is-hidden" alt="Prévia do comprovante" />
             </div>
             <div class="button-row">
               <button id="removeImage" class="secondary-button" type="button" disabled>Remover imagem</button>
@@ -197,7 +212,7 @@
             <h2>Adicionar gasto manual</h2>
             <form id="manualForm" class="form-grid">
               <label class="field">
-                <span>Descricao do gasto</span>
+                <span>Descrição do gasto</span>
                 <input name="descricao" required />
               </label>
               <label class="field">
@@ -228,7 +243,7 @@
                 <input name="data_vencimento" type="date" />
               </label>
               <label class="field field-full">
-                <span>Observacoes</span>
+                <span>Observações</span>
                 <textarea name="observacoes" rows="3"></textarea>
               </label>
               <button class="primary-button field-full" type="submit">Salvar gasto</button>
@@ -239,7 +254,7 @@
         <section id="alertsView" class="view">
           <div class="section-title">
             <div>
-              <p class="eyebrow">Atencao</p>
+              <p class="eyebrow">Atenção</p>
               <h2>Alertas financeiros</h2>
             </div>
           </div>
@@ -249,18 +264,18 @@
         <section id="profileView" class="view">
           <div class="section-title">
             <div>
-              <p class="eyebrow">Configuracoes</p>
-              <h2>Perfil e orcamento</h2>
+              <p class="eyebrow">Configurações</p>
+              <h2>Perfil e orçamento</h2>
             </div>
           </div>
           <section class="panel">
             <form id="settingsForm" class="form-grid">
               <label class="field">
-                <span>Limite total do mes</span>
+                <span>Valor disponível no ciclo</span>
                 <input name="monthlyLimit" type="number" min="0" step="0.01" required />
               </label>
               <label class="field">
-                <span>Dia de inicio do ciclo</span>
+                <span>Dia de início do ciclo</span>
                 <input name="cycleStartDay" type="number" min="1" max="28" required />
               </label>
               <label class="field">
@@ -268,21 +283,23 @@
                 <input name="savingsGoal" type="number" min="0" step="0.01" />
               </label>
               <label class="field">
-                <span>Webhook n8n</span>
-                <input name="webhookUrl" type="url" placeholder="https://..." />
+                <span>Webhook n8n (HTTPS)</span>
+                <input name="webhookUrl" type="url" inputmode="url" placeholder="https://..." aria-describedby="webhookHelp" />
               </label>
+              <p id="webhookHelp" class="helper-text field-full">A URL fica salva somente neste dispositivo. O app valida os dados recebidos antes de exibi-los.</p>
+              <p class="budget-formula field-full">Orçamento para gastar = valor disponível no ciclo − meta de economia.</p>
               <div class="field-full category-limits">
                 <h3>Limite por categoria</h3>
                 <div id="categoryLimits"></div>
               </div>
-              <button class="primary-button field-full" type="submit">Salvar configuracoes</button>
+              <button class="primary-button field-full" type="submit">Salvar configurações</button>
             </form>
           </section>
         </section>
       </main>
 
       <nav class="bottom-nav" aria-label="Menu inferior">
-        <button class="bottom-item is-active" data-view="home" type="button"><span>Inicio</span></button>
+        <button class="bottom-item is-active" data-view="home" type="button" aria-current="page"><span>Início</span></button>
         <button class="bottom-item" data-view="expenses" type="button"><span>Gastos</span></button>
         <button class="bottom-item add-button" data-view="add" type="button"><span>Adicionar</span></button>
         <button class="bottom-item" data-view="alerts" type="button"><span>Alertas</span></button>
@@ -290,17 +307,17 @@
       </nav>
     </div>
 
-    <div id="reviewModal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+    <div id="reviewModal" class="modal is-hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="reviewTitle">
       <section class="modal-panel">
         <div class="section-title">
           <div>
-            <p class="eyebrow">Revisao</p>
+            <p id="reviewEyebrow" class="eyebrow">Revisão</p>
             <h2 id="reviewTitle">Revisar gasto identificado</h2>
           </div>
-          <button id="closeReview" class="icon-button" type="button" aria-label="Fechar">x</button>
+          <button id="closeReview" class="icon-button" type="button" aria-label="Fechar">×</button>
         </div>
         <p id="confidenceWarning" class="warning-box is-hidden">
-          Alguns dados podem nao ter sido identificados corretamente. Revise as informacoes antes de salvar.
+          Alguns dados podem não ter sido identificados corretamente. Revise as informações antes de salvar.
         </p>
         <form id="reviewForm" class="form-grid"></form>
         <div class="button-row">
@@ -311,17 +328,18 @@
       </section>
     </div>
 
-    <div id="detailModal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+    <div id="detailModal" class="modal is-hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="detailTitle">
       <section class="modal-panel">
         <div class="section-title">
           <div>
             <p class="eyebrow">Detalhes</p>
             <h2 id="detailTitle">Gasto</h2>
           </div>
-          <button id="closeDetail" class="icon-button" type="button" aria-label="Fechar">x</button>
+          <button id="closeDetail" class="icon-button" type="button" aria-label="Fechar">×</button>
         </div>
         <div id="detailContent" class="detail-content"></div>
         <div class="button-row detail-actions">
+          <button id="editExpense" class="primary-button" type="button">Editar gasto</button>
           <button id="markPaid" class="secondary-button" type="button">Marcar como pago</button>
           <button id="markPending" class="secondary-button" type="button">Marcar como pendente</button>
           <button id="shareExpense" class="secondary-button" type="button">Compartilhar resumo</button>
@@ -330,11 +348,11 @@
       </section>
     </div>
 
-    <div id="filterDrawer" class="drawer is-hidden" aria-hidden="true">
+    <div id="filterDrawer" class="drawer is-hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="filterTitle">
       <section class="drawer-panel">
         <div class="section-title">
-          <h2>Filtros</h2>
-          <button id="closeFilters" class="icon-button" type="button" aria-label="Fechar filtros">x</button>
+          <h2 id="filterTitle">Filtros</h2>
+          <button id="closeFilters" class="icon-button" type="button" aria-label="Fechar filtros">×</button>
         </div>
         <form id="filterForm" class="form-grid">
           <label class="field">
@@ -354,19 +372,19 @@
             <select name="forma_pagamento"></select>
           </label>
           <label class="field">
-            <span>Valor minimo</span>
+            <span>Valor mínimo</span>
             <input name="minValue" type="number" min="0" step="0.01" />
           </label>
           <label class="field">
-            <span>Valor maximo</span>
+            <span>Valor máximo</span>
             <input name="maxValue" type="number" min="0" step="0.01" />
           </label>
           <label class="field">
-            <span>Inicio do periodo</span>
+            <span>Início do período</span>
             <input name="startDate" type="date" />
           </label>
           <label class="field">
-            <span>Fim do periodo</span>
+            <span>Fim do período</span>
             <input name="endDate" type="date" />
           </label>
           <label class="field">
@@ -384,11 +402,11 @@
       </section>
     </div>
 
+    <div id="toastRegion" class="toast-region is-hidden" role="status" aria-live="polite">
+      <span id="toastMessage"></span>
+      <button id="toastAction" class="text-button is-hidden" type="button"></button>
+    </div>
+
     <script src="./app.js"></script>
-    <script>
-      if ("serviceWorker" in navigator && location.protocol !== "file:") {
-        navigator.serviceWorker.register("./service-worker.js").then((registration) => registration.update());
-      }
-    </script>
   </body>
 </html>

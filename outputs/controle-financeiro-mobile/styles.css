@@ -27,6 +27,10 @@ body {
   color: var(--ink);
 }
 
+body.has-overlay {
+  overflow: hidden;
+}
+
 button,
 input,
 select,
@@ -36,6 +40,14 @@ textarea {
 
 button {
   cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(36, 98, 167, 0.35);
+  outline-offset: 2px;
 }
 
 .is-hidden {
@@ -121,6 +133,12 @@ button {
   display: grid;
   gap: 8px;
   justify-items: end;
+}
+
+.compact-button {
+  min-height: 40px;
+  padding-inline: 12px;
+  font-size: 13px;
 }
 
 .eyebrow {
@@ -252,6 +270,12 @@ button {
   font-size: 13px;
 }
 
+.savings-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -293,6 +317,29 @@ button {
   max-height: 240px;
 }
 
+.chart-summary,
+.helper-text,
+.budget-formula {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chart-summary {
+  margin: 8px 0 0;
+}
+
+.helper-text,
+.budget-formula {
+  margin: 0;
+}
+
+.budget-formula {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef3f7;
+}
+
 .summary-list,
 .detail-content {
   display: grid;
@@ -331,10 +378,18 @@ button {
 }
 
 .alert-card {
+  display: grid;
+  gap: 10px;
   padding: 12px;
   border-left: 4px solid var(--yellow);
   border-radius: 8px;
   background: #fffaf0;
+}
+
+.alert-card .text-button {
+  min-height: 36px;
+  padding: 0;
+  justify-self: start;
 }
 
 .alert-card.danger {
@@ -358,6 +413,27 @@ button {
   margin-bottom: 14px;
   background: #fff8e6;
   color: #755200;
+}
+
+.demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #eaf3ff;
+  color: var(--blue-950);
+}
+
+.demo-banner button,
+.status-banner button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--blue-950);
+  color: white;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .warning-box {
@@ -661,6 +737,30 @@ button {
   border-radius: 8px 8px 0 0;
 }
 
+.toast-region {
+  position: fixed;
+  right: 14px;
+  bottom: 88px;
+  left: 14px;
+  z-index: 60;
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--blue-950);
+  color: white;
+  box-shadow: var(--shadow);
+}
+
+.toast-region .text-button {
+  min-height: 36px;
+  padding: 0;
+  color: #9bd9bd;
+}
+
 .category-limits h3 {
   margin: 0 0 10px;
 }
@@ -720,6 +820,12 @@ button {
     padding: 28px 28px 42px;
   }
 
+  .toast-region {
+    left: auto;
+    bottom: 24px;
+    width: min(420px, calc(100% - 48px));
+  }
+
   .bottom-nav {
     display: none;
   }
@@ -773,5 +879,21 @@ button {
   .refresh-data-button,
   .month-switcher {
     width: 100%;
+  }
+
+  .demo-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }

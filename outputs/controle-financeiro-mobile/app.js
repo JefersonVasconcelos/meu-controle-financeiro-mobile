@@ -1,38 +1,44 @@
 const categories = [
-  "Alimentacao",
+  "Alimentação",
   "Mercado",
   "Transporte",
   "Moradia",
-  "Saude",
-  "Educacao",
+  "Saúde",
+  "Educação",
   "Lazer",
   "Assinaturas",
   "Compras",
-  "Servicos",
+  "Serviços",
   "Impostos",
   "Equipamentos",
   "Outros",
 ];
 
-const paymentMethods = ["Pix", "Cartao de credito", "Cartao de debito", "Dinheiro", "Boleto", "Transferencia"];
+const paymentMethods = ["Pix", "Cartão de crédito", "Cartão de débito", "Dinheiro", "Boleto", "Transferência"];
 const processingLabels = [
   "Enviando imagem.",
   "Lendo comprovante.",
   "Identificando a compra.",
   "Organizando os valores.",
   "Salvando o gasto.",
-  "Atualizando o controle mensal.",
+  "Atualizando o controle financeiro.",
 ];
 
 const storageKey = "controleFinanceiro:v2";
 const pinKey = "controleFinanceiro:pin";
+const pinHashKey = "controleFinanceiro:pinHash";
 const authSessionKey = "controleFinanceiro:authSession";
-const currentDate = new Date();
+const authSessionDuration = 12 * 60 * 60 * 1000;
 
-let selectedMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+const initialDate = new Date();
+let selectedMonth = new Date(initialDate.getFullYear(), initialDate.getMonth(), 1);
 let selectedFile = null;
 let pendingReview = null;
 let selectedExpenseId = null;
+let reviewMode = "create";
+let lastFocusedElement = null;
+let lastDeletedExpense = null;
+let toastTimer = null;
 
 const sampleExpenses = [
   {
@@ -46,7 +52,7 @@ const sampleExpenses = [
     status_vencimento: "Em dia",
     categoria: "Mercado",
     descricao: "Compras da semana",
-    forma_pagamento: "Cartao de credito",
+    forma_pagamento: "Cartão de crédito",
     valor_produtos: 286.7,
     valor_frete: 0,
     valor_desconto: 12,
@@ -69,15 +75,15 @@ const sampleExpenses = [
     data_vencimento: "",
     status_vencimento: "Em dia",
     categoria: "Transporte",
-    descricao: "Combustivel",
+    descricao: "Combustível",
     forma_pagamento: "Pix",
     valor_produtos: 180,
     valor_frete: 0,
     valor_desconto: 0,
     valor_total: 180,
     status_pagamento: "Pago",
-    itens_json: [{ nome: "Combustivel", valor: 180 }],
-    dica_financeira: "Acompanhe este gasto semanalmente para evitar surpresa no fim do mes.",
+    itens_json: [{ nome: "Combustível", valor: 180 }],
+    dica_financeira: "Acompanhe este gasto semanalmente para evitar surpresa no fim do mês.",
     alerta_financeiro: "",
     confianca_leitura: 0.91,
     observacoes: "",
@@ -94,7 +100,7 @@ const sampleExpenses = [
     status_vencimento: "A vencer",
     categoria: "Assinaturas",
     descricao: "Streaming e armazenamento",
-    forma_pagamento: "Cartao de credito",
+    forma_pagamento: "Cartão de crédito",
     valor_produtos: 74.8,
     valor_frete: 0,
     valor_desconto: 0,
@@ -110,15 +116,15 @@ const sampleExpenses = [
   {
     id: "sample-4",
     data_registro: "2026-06-05",
-    fornecedor: "Farmacia Vida",
+    fornecedor: "Farmácia Vida",
     cnpj_fornecedor: "",
     numero_nota: "5510",
     data_emissao: "2026-06-05",
     data_vencimento: "",
     status_vencimento: "Em dia",
-    categoria: "Saude",
+    categoria: "Saúde",
     descricao: "Medicamentos",
-    forma_pagamento: "Cartao de debito",
+    forma_pagamento: "Cartão de débito",
     valor_produtos: 136.9,
     valor_frete: 0,
     valor_desconto: 0,
@@ -172,6 +178,7 @@ const defaultState = {
     },
   },
   expenses: sampleExpenses,
+  demoMode: true,
   filters: {
     categoria: "",
     status_pagamento: "",
@@ -185,6 +192,7 @@ const defaultState = {
 };
 
 let state = loadState();
+selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
 
 const dom = {
   authScreen: document.querySelector("#authScreen"),
@@ -192,11 +200,13 @@ const dom = {
   pinInput: document.querySelector("#pinInput"),
   authButton: document.querySelector("#authButton"),
   authMessage: document.querySelector("#authMessage"),
+  lockApp: document.querySelector("#lockApp"),
   currentMonthLabel: document.querySelector("#currentMonthLabel"),
   prevMonth: document.querySelector("#prevMonth"),
   nextMonth: document.querySelector("#nextMonth"),
   availableValue: document.querySelector("#availableValue"),
   budgetValue: document.querySelector("#budgetValue"),
+  savingsValue: document.querySelector("#savingsValue"),
   spentValue: document.querySelector("#spentValue"),
   budgetHint: document.querySelector("#budgetHint"),
   budgetPercent: document.querySelector("#budgetPercent"),
@@ -210,6 +220,8 @@ const dom = {
   expensesList: document.querySelector("#expensesList"),
   searchInput: document.querySelector("#searchInput"),
   staleBanner: document.querySelector("#staleBanner"),
+  demoBanner: document.querySelector("#demoBanner"),
+  clearDemoData: document.querySelector("#clearDemoData"),
   refreshDashboard: document.querySelector("#refreshDashboard"),
   refreshData: document.querySelector("#refreshData"),
   showUpload: document.querySelector("#showUpload"),
@@ -226,7 +238,13 @@ const dom = {
   manualForm: document.querySelector("#manualForm"),
   settingsForm: document.querySelector("#settingsForm"),
   categoryLimits: document.querySelector("#categoryLimits"),
+  categoryChartSummary: document.querySelector("#categoryChartSummary"),
+  weekChartSummary: document.querySelector("#weekChartSummary"),
+  evolutionChartSummary: document.querySelector("#evolutionChartSummary"),
+  statusChartSummary: document.querySelector("#statusChartSummary"),
   reviewModal: document.querySelector("#reviewModal"),
+  reviewTitle: document.querySelector("#reviewTitle"),
+  reviewEyebrow: document.querySelector("#reviewEyebrow"),
   reviewForm: document.querySelector("#reviewForm"),
   closeReview: document.querySelector("#closeReview"),
   cancelReview: document.querySelector("#cancelReview"),
@@ -237,6 +255,7 @@ const dom = {
   detailTitle: document.querySelector("#detailTitle"),
   detailContent: document.querySelector("#detailContent"),
   closeDetail: document.querySelector("#closeDetail"),
+  editExpense: document.querySelector("#editExpense"),
   markPaid: document.querySelector("#markPaid"),
   markPending: document.querySelector("#markPending"),
   shareExpense: document.querySelector("#shareExpense"),
@@ -246,6 +265,9 @@ const dom = {
   openFilters: document.querySelector("#openFilters"),
   closeFilters: document.querySelector("#closeFilters"),
   clearFilters: document.querySelector("#clearFilters"),
+  toastRegion: document.querySelector("#toastRegion"),
+  toastMessage: document.querySelector("#toastMessage"),
+  toastAction: document.querySelector("#toastAction"),
 };
 
 function loadState() {
@@ -253,11 +275,23 @@ function loadState() {
   if (!saved) return structuredClone(defaultState);
   try {
     const parsed = JSON.parse(saved);
+    const base = structuredClone(defaultState);
+    const expenses = Array.isArray(parsed.expenses) ? parsed.expenses.map((expense) => normalizeExpense(expense)) : base.expenses;
+    const demoMode = typeof parsed.demoMode === "boolean"
+      ? parsed.demoMode
+      : expenses.length > 0 && expenses.every((expense) => String(expense.id).startsWith("sample-"));
+    const settings = { ...base.settings, ...(parsed.settings || {}) };
+    settings.monthlyLimit = Math.max(0, Number(settings.monthlyLimit || 0));
+    settings.savingsGoal = Math.max(0, Number(settings.savingsGoal || 0));
+    settings.cycleStartDay = Math.min(28, Math.max(1, Number(settings.cycleStartDay || 1)));
+    settings.categoryLimits = normalizeCategoryLimits(settings.categoryLimits);
     return {
-      ...structuredClone(defaultState),
+      ...base,
       ...parsed,
-      settings: { ...structuredClone(defaultState).settings, ...(parsed.settings || {}) },
-      filters: { ...structuredClone(defaultState).filters, ...(parsed.filters || {}) },
+      expenses,
+      demoMode,
+      settings,
+      filters: { ...base.filters, ...(parsed.filters || {}) },
     };
   } catch {
     return structuredClone(defaultState);
@@ -279,21 +313,61 @@ function dateBR(value) {
   return `${day}/${month}/${year}`;
 }
 
-function monthKey(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+function todayLocal() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-function expenseMonthKey(expense) {
-  return String(expense.data_emissao || expense.data_registro || "").slice(0, 7);
+function localDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function parseLocalDate(value) {
+  const normalized = normalizeDate(value);
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.valueOf()) ? null : parsed;
+}
+
+function getCycleBounds(anchor = selectedMonth) {
+  const startDay = Math.min(28, Math.max(1, Number(state.settings.cycleStartDay || 1)));
+  const start = new Date(anchor.getFullYear(), anchor.getMonth(), startDay);
+  const endExclusive = new Date(anchor.getFullYear(), anchor.getMonth() + 1, startDay);
+  const end = new Date(endExclusive.getFullYear(), endExclusive.getMonth(), endExclusive.getDate() - 1);
+  return { start, end, endExclusive };
+}
+
+function cycleExpenses(anchor = selectedMonth) {
+  const { start, endExclusive } = getCycleBounds(anchor);
+  return state.expenses.filter((expense) => {
+    const expenseDate = parseLocalDate(expense.data_emissao || expense.data_registro);
+    return expenseDate && expenseDate >= start && expenseDate < endExclusive;
+  });
 }
 
 function selectedExpenses() {
-  return state.expenses.filter((expense) => expenseMonthKey(expense) === monthKey(selectedMonth));
+  return cycleExpenses(selectedMonth);
 }
 
 function previousMonthExpenses() {
-  const previous = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1);
-  return state.expenses.filter((expense) => expenseMonthKey(expense) === monthKey(previous));
+  return cycleExpenses(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
+}
+
+function cycleAnchorForDate(value) {
+  const date = parseLocalDate(value) || todayLocal();
+  const startDay = Math.min(28, Math.max(1, Number(state.settings.cycleStartDay || 1)));
+  const monthOffset = date.getDate() < startDay ? -1 : 0;
+  return new Date(date.getFullYear(), date.getMonth() + monthOffset, 1);
+}
+
+function formatCycleLabel(bounds) {
+  if (bounds.start.getDate() === 1) {
+    return bounds.start.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }).replace(".", "");
+  }
+  const start = bounds.start.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+  const end = bounds.end.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "");
+  return `${start} – ${end}`;
 }
 
 function sum(list, selector) {
@@ -301,7 +375,7 @@ function sum(list, selector) {
 }
 
 function sanitizeText(value) {
-  return String(value ?? "").replace(/[<>&]/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[char]));
+  return String(value ?? "").replace(/[<>&"']/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[char]));
 }
 
 function getBudgetColor(percent) {
@@ -314,6 +388,16 @@ function getBudgetColor(percent) {
 function getStats() {
   const expenses = selectedExpenses();
   const previous = previousMonthExpenses();
+  const cycle = getCycleBounds();
+  const today = todayLocal();
+  const cycleDays = Math.round((cycle.endExclusive - cycle.start) / 86400000);
+  const position = today < cycle.start ? "future" : today >= cycle.endExclusive ? "past" : "current";
+  const elapsedDays = position === "future"
+    ? 0
+    : position === "past"
+      ? cycleDays
+      : Math.floor((today - cycle.start) / 86400000) + 1;
+  const remainingDays = position === "current" ? Math.max(0, Math.round((cycle.endExclusive - today) / 86400000)) : 0;
   const total = sum(expenses, (expense) => expense.valor_total);
   const previousTotal = sum(previous, (expense) => expense.valor_total);
   const paid = sum(expenses.filter((expense) => expense.status_pagamento === "Pago"), (expense) => expense.valor_total);
@@ -321,12 +405,16 @@ function getStats() {
   const largest = expenses.reduce((max, expense) => (Number(expense.valor_total) > Number(max?.valor_total || 0) ? expense : max), null);
   const categoryTotals = groupTotals(expenses, "categoria");
   const topCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0];
-  const dailyAverage = total / Math.max(1, Math.min(new Date().getDate(), daysInMonth(selectedMonth)));
+  const dailyAverage = elapsedDays ? total / elapsedDays : 0;
   const avgPurchase = expenses.length ? total / expenses.length : 0;
-  const percentUsed = state.settings.monthlyLimit ? (total / state.settings.monthlyLimit) * 100 : 0;
-  const available = Number(state.settings.monthlyLimit || 0) - total;
+  const monthlyLimit = Math.max(0, Number(state.settings.monthlyLimit || 0));
+  const savingsGoal = Math.max(0, Number(state.settings.savingsGoal || 0));
+  const spendingBudget = Math.max(0, monthlyLimit - savingsGoal);
+  const percentUsed = spendingBudget ? (total / spendingBudget) * 100 : total ? 100 : 0;
+  const available = spendingBudget - total;
+  const projected = position === "current" ? dailyAverage * cycleDays : position === "past" ? total : 0;
 
-  return { expenses, previous, total, previousTotal, paid, pending, largest, categoryTotals, topCategory, dailyAverage, avgPurchase, percentUsed, available };
+  return { expenses, previous, total, previousTotal, paid, pending, largest, categoryTotals, topCategory, dailyAverage, avgPurchase, percentUsed, available, monthlyLimit, savingsGoal, spendingBudget, projected, cycle, cycleDays, elapsedDays, remainingDays, position };
 }
 
 function groupTotals(expenses, key) {
@@ -343,15 +431,21 @@ function daysInMonth(date) {
 
 function render() {
   const stats = getStats();
-  dom.currentMonthLabel.textContent = selectedMonth.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }).replace(".", "");
+  dom.currentMonthLabel.textContent = formatCycleLabel(stats.cycle);
   dom.availableValue.textContent = currency(stats.available);
-  dom.budgetValue.textContent = currency(state.settings.monthlyLimit);
+  dom.budgetValue.textContent = currency(stats.spendingBudget);
+  dom.savingsValue.textContent = currency(stats.savingsGoal);
   dom.spentValue.textContent = `Gasto: ${currency(stats.total)}`;
   dom.budgetPercent.textContent = `${Math.round(stats.percentUsed)}%`;
-  dom.budgetBar.style.width = `${Math.min(140, stats.percentUsed)}%`;
+  dom.budgetBar.style.width = `${Math.min(100, stats.percentUsed)}%`;
   dom.budgetBar.style.background = getBudgetColor(stats.percentUsed);
-  dom.remainingDays.textContent = `${Math.max(0, daysInMonth(selectedMonth) - currentDate.getDate())} dias restantes`;
+  dom.remainingDays.textContent = stats.position === "current"
+    ? `${stats.remainingDays} ${stats.remainingDays === 1 ? "dia" : "dias"} até o fim`
+    : stats.position === "past"
+      ? "Ciclo encerrado"
+      : "Ciclo futuro";
   dom.budgetHint.textContent = projectedMessage(stats);
+  dom.demoBanner.classList.toggle("is-hidden", !state.demoMode);
 
   renderMetrics(stats);
   renderSummary(stats);
@@ -365,7 +459,7 @@ function render() {
 async function refreshDataNow() {
   const originalLabel = dom.refreshData.textContent;
   dom.refreshData.disabled = true;
-  dom.refreshData.textContent = "Atualizando...";
+  dom.refreshData.textContent = "Recarregando...";
   dom.refreshData.classList.remove("is-updated");
 
   state = loadState();
@@ -373,60 +467,62 @@ async function refreshDataNow() {
   render();
   await navigator.serviceWorker?.getRegistration?.().then((registration) => registration?.update()).catch(() => null);
 
-  dom.refreshData.textContent = "Atualizado";
+  dom.refreshData.textContent = "Painel recarregado";
   dom.refreshData.classList.add("is-updated");
   window.setTimeout(() => {
     dom.refreshData.disabled = false;
-    dom.refreshData.textContent = originalLabel.trim() || "Atualizar dados";
+    dom.refreshData.textContent = originalLabel.trim() || "Recarregar painel";
     dom.refreshData.classList.remove("is-updated");
   }, 1400);
 }
 
 function projectedMessage(stats) {
-  const day = currentDate.getMonth() === selectedMonth.getMonth() ? currentDate.getDate() : daysInMonth(selectedMonth);
-  const projected = stats.dailyAverage * daysInMonth(selectedMonth);
-  if (projected > Number(state.settings.monthlyLimit || 0)) {
-    return "Mantendo o ritmo atual, seus gastos podem ultrapassar o limite definido para este mes.";
+  if (stats.position === "past") {
+    return `Ciclo encerrado em ${dateBR(localDateKey(stats.cycle.end))}. Total gasto: ${currency(stats.total)}.`;
   }
-  return `Estimativa ate o fim do mes: ${currency(projected)}.`;
+  if (stats.position === "future") {
+    return `Este ciclo começa em ${dateBR(localDateKey(stats.cycle.start))}. A projeção será exibida após o primeiro dia.`;
+  }
+  if (stats.projected > stats.spendingBudget) {
+    return `No ritmo atual, a projeção é ${currency(stats.projected)} e pode ultrapassar seu orçamento para gastar.`;
+  }
+  return `Projeção até o fim do ciclo: ${currency(stats.projected)}.`;
 }
 
 function renderMetrics(stats) {
   const metrics = [
-    ["Total gasto no mes", currency(stats.total)],
-    ["Limite mensal definido", currency(state.settings.monthlyLimit)],
-    ["Valor disponivel", currency(stats.available)],
-    ["Percentual utilizado", `${Math.round(stats.percentUsed)}%`],
-    ["Compras registradas", String(stats.expenses.length)],
+    ["Total gasto no ciclo", currency(stats.total)],
+    ["Orçamento restante", currency(stats.available)],
     ["Contas pendentes", currency(stats.pending)],
-    ["Media de gastos por dia", currency(stats.dailyAverage)],
     ["Categoria com maior gasto", stats.topCategory ? stats.topCategory[0] : "-"],
   ];
-  dom.metricsGrid.innerHTML = metrics.map(([label, value]) => `<article class="metric-card"><span>${label}</span><strong>${value}</strong></article>`).join("");
+  dom.metricsGrid.innerHTML = metrics.map(([label, value]) => `<article class="metric-card"><span>${sanitizeText(label)}</span><strong>${sanitizeText(value)}</strong></article>`).join("");
 }
 
 function renderSummary(stats) {
   const diff = stats.previousTotal ? ((stats.total - stats.previousTotal) / stats.previousTotal) * 100 : 0;
   const comparison = stats.previousTotal
     ? `${stats.total > stats.previousTotal ? "Gastou mais" : "Gastou menos"}: ${Math.abs(diff).toFixed(1).replace(".", ",")}%`
-    : "Sem mes anterior";
+    : "Sem ciclo anterior";
   dom.monthComparisonBadge.textContent = comparison;
 
   const currentCategories = stats.categoryTotals;
   const prevCategories = groupTotals(stats.previous, "categoria");
   const deltas = categories.map((category) => [category, (currentCategories[category] || 0) - (prevCategories[category] || 0)]);
-  const increased = deltas.sort((a, b) => b[1] - a[1])[0];
+  const increased = [...deltas].sort((a, b) => b[1] - a[1])[0];
   const reduced = [...deltas].sort((a, b) => a[1] - b[1])[0];
 
   const items = [
     ["Total gasto", currency(stats.total)],
     ["Quantidade de compras", stats.expenses.length],
-    ["Maior compra do mes", stats.largest ? `${stats.largest.fornecedor || stats.largest.descricao} (${currency(stats.largest.valor_total)})` : "-"],
-    ["Media por compra", currency(stats.avgPurchase)],
-    ["Media diaria", currency(stats.dailyAverage)],
+    ["Maior compra do ciclo", stats.largest ? `${stats.largest.fornecedor || stats.largest.descricao} (${currency(stats.largest.valor_total)})` : "-"],
+    ["Média por compra", currency(stats.avgPurchase)],
+    ["Média diária", stats.position === "future" ? "Ciclo ainda não iniciado" : currency(stats.dailyAverage)],
     ["Total pago", currency(stats.paid)],
     ["Total pendente", currency(stats.pending)],
-    ["Valor restante do orcamento", currency(stats.available)],
+    ["Valor disponível no ciclo", currency(stats.monthlyLimit)],
+    ["Meta de economia", currency(stats.savingsGoal)],
+    ["Orçamento restante", currency(stats.available)],
     ["Categoria que mais aumentou", increased && increased[1] > 0 ? increased[0] : "-"],
     ["Categoria que mais reduziu", reduced && reduced[1] < 0 ? reduced[0] : "-"],
   ];
@@ -435,45 +531,72 @@ function renderSummary(stats) {
 
 function buildAlerts(stats) {
   const alerts = [];
-  if (stats.percentUsed >= 100) alerts.push(["danger", "Seu limite mensal foi ultrapassado."]);
-  else if (stats.percentUsed >= 90) alerts.push(["danger", `Voce ja utilizou ${Math.round(stats.percentUsed)}% do seu limite mensal.`]);
-  else if (stats.percentUsed >= 70) alerts.push(["attention", `Voce ja utilizou ${Math.round(stats.percentUsed)}% do seu limite mensal.`]);
+  if (stats.savingsGoal > stats.monthlyLimit) {
+    alerts.push({ type: "danger", text: "A meta de economia é maior que o valor disponível no ciclo.", view: "profile", actionLabel: "Ajustar orçamento" });
+  } else if (stats.percentUsed >= 100) {
+    alerts.push({ type: "danger", text: "Seu orçamento para gastar foi ultrapassado.", view: "profile", actionLabel: "Ajustar orçamento" });
+  } else if (stats.percentUsed >= 90) {
+    alerts.push({ type: "danger", text: `Você já utilizou ${Math.round(stats.percentUsed)}% do orçamento para gastar.`, view: "profile", actionLabel: "Revisar orçamento" });
+  } else if (stats.percentUsed >= 70) {
+    alerts.push({ type: "attention", text: `Você já utilizou ${Math.round(stats.percentUsed)}% do orçamento para gastar.`, view: "expenses", actionLabel: "Ver gastos" });
+  }
 
-  const today = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+  const today = todayLocal();
   stats.expenses.forEach((expense) => {
     if (expense.status_pagamento !== "Pendente" || !expense.data_vencimento) return;
-    const due = new Date(`${expense.data_vencimento}T00:00:00`);
+    const due = parseLocalDate(expense.data_vencimento);
+    if (!due) return;
     const days = Math.round((due - today) / 86400000);
-    if (days < 0) alerts.push(["danger", `${expense.descricao || expense.fornecedor} esta vencido.`]);
-    else if (days <= 3) alerts.push(["attention", `${expense.descricao || expense.fornecedor} vence em ate tres dias.`]);
+    if (days < 0) alerts.push({ type: "danger", text: `${expense.descricao || expense.fornecedor} está vencido.`, expenseId: expense.id, actionLabel: "Ver gasto" });
+    else if (days <= 3) alerts.push({ type: "attention", text: `${expense.descricao || expense.fornecedor} vence em até três dias.`, expenseId: expense.id, actionLabel: "Ver gasto" });
   });
 
   const average = stats.avgPurchase;
   stats.expenses.forEach((expense) => {
-    if (average && Number(expense.valor_total) > average * 2.2) alerts.push(["attention", `${expense.descricao || expense.fornecedor} ficou muito acima da media.`]);
-    if (Number(expense.confianca_leitura) < 0.75) alerts.push(["attention", "Uma leitura de comprovante esta com baixa confianca."]);
+    if (average && stats.expenses.length > 1 && Number(expense.valor_total) > average * 2.2) alerts.push({ type: "attention", text: `${expense.descricao || expense.fornecedor} ficou muito acima da média.`, expenseId: expense.id, actionLabel: "Revisar gasto" });
+    if (Number(expense.confianca_leitura) < 0.75) alerts.push({ type: "attention", text: "Uma leitura de comprovante está com baixa confiança.", expenseId: expense.id, actionLabel: "Revisar gasto" });
   });
 
   const seen = new Set();
   stats.expenses.forEach((expense) => {
     const key = `${expense.data_emissao}|${expense.valor_total}|${expense.fornecedor || expense.descricao}`;
-    if (seen.has(key)) alerts.push(["attention", "Possivel compra duplicada identificada."]);
+    if (seen.has(key)) alerts.push({ type: "attention", text: "Possível compra duplicada identificada.", expenseId: expense.id, actionLabel: "Conferir gasto" });
     seen.add(key);
   });
 
   Object.entries(state.settings.categoryLimits || {}).forEach(([category, limit]) => {
-    if (limit && (stats.categoryTotals[category] || 0) > limit) alerts.push(["danger", `${category} ultrapassou o limite definido.`]);
+    if (limit && (stats.categoryTotals[category] || 0) > limit) alerts.push({ type: "danger", text: `${category} ultrapassou o limite definido.`, view: "expenses", actionLabel: "Ver gastos" });
   });
 
-  if (!alerts.length) alerts.push(["success", "Nenhum alerta financeiro neste mes."]);
+  if (!alerts.length) alerts.push({ type: "success", text: "Nenhum alerta financeiro neste ciclo." });
   return alerts;
 }
 
 function renderAlerts(stats) {
   const alerts = buildAlerts(stats);
-  const html = alerts.map(([type, text]) => `<article class="alert-card ${type === "danger" ? "danger" : type === "success" ? "success" : ""}">${sanitizeText(text)}</article>`).join("");
-  dom.homeAlerts.innerHTML = alerts.slice(0, 4).map(([type, text]) => `<article class="alert-card ${type === "danger" ? "danger" : type === "success" ? "success" : ""}">${sanitizeText(text)}</article>`).join("");
-  dom.alertsList.innerHTML = html;
+  renderAlertCards(dom.homeAlerts, alerts.slice(0, 4));
+  renderAlertCards(dom.alertsList, alerts);
+}
+
+function renderAlertCards(container, alerts) {
+  container.replaceChildren();
+  alerts.forEach((alert) => {
+    const card = document.createElement("article");
+    card.className = `alert-card ${alert.type === "danger" ? "danger" : alert.type === "success" ? "success" : ""}`.trim();
+    const text = document.createElement("span");
+    text.textContent = alert.text;
+    card.append(text);
+    if (alert.actionLabel) {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "text-button";
+      action.textContent = alert.actionLabel;
+      if (alert.expenseId) action.dataset.alertExpenseId = alert.expenseId;
+      if (alert.view) action.dataset.alertView = alert.view;
+      card.append(action);
+    }
+    container.append(card);
+  });
 }
 
 function renderExpenses() {
@@ -534,11 +657,24 @@ function renderSettings() {
 }
 
 function drawCharts(stats) {
+  const categoryEntries = Object.entries(stats.categoryTotals).sort((a, b) => b[1] - a[1]).slice(0, 7);
+  const weeklyEntries = weekTotals(stats.expenses);
+  const evolutionEntries = dailyTotals(stats.expenses);
   drawRing("budgetRing", stats.percentUsed);
-  drawBarChart("categoryChart", Object.entries(stats.categoryTotals).sort((a, b) => b[1] - a[1]).slice(0, 7), "#2462a7");
-  drawBarChart("weekChart", weekTotals(stats.expenses), "#1f9d68");
-  drawLineChart("evolutionChart", dailyTotals(stats.expenses), "#2462a7");
+  drawBarChart("categoryChart", categoryEntries, "#2462a7");
+  drawBarChart("weekChart", weeklyEntries, "#1f9d68");
+  drawLineChart("evolutionChart", evolutionEntries, "#2462a7");
   drawBarChart("statusChart", [["Pago", stats.paid], ["Pendente", stats.pending]], "#ee7b27");
+  document.querySelector("#budgetRing").setAttribute("aria-label", `${Math.round(stats.percentUsed)}% do orçamento para gastar utilizado`);
+  dom.categoryChartSummary.textContent = categoryEntries.length
+    ? `Maior categoria: ${categoryEntries[0][0]}, com ${currency(categoryEntries[0][1])}.`
+    : "Nenhum gasto por categoria neste ciclo.";
+  const topWeek = [...weeklyEntries].sort((a, b) => b[1] - a[1])[0];
+  dom.weekChartSummary.textContent = topWeek && topWeek[1]
+    ? `Maior período semanal: ${topWeek[0]}, com ${currency(topWeek[1])}.`
+    : "Nenhum gasto semanal neste ciclo.";
+  dom.evolutionChartSummary.textContent = `Total acumulado no ciclo: ${currency(stats.total)}.`;
+  dom.statusChartSummary.textContent = `Pago: ${currency(stats.paid)}. Pendente: ${currency(stats.pending)}.`;
 }
 
 function prepareCanvas(id) {
@@ -622,21 +758,27 @@ function drawEmpty(ctx, width, height) {
 }
 
 function weekTotals(expenses) {
-  const totals = [0, 0, 0, 0, 0].map((value, index) => [`Semana ${index + 1}`, value]);
+  const { start, endExclusive } = getCycleBounds();
+  const cycleDays = Math.round((endExclusive - start) / 86400000);
+  const totals = Array.from({ length: Math.ceil(cycleDays / 7) }, (_, index) => [`Semana ${index + 1}`, 0]);
   expenses.forEach((expense) => {
-    const day = Number(String(expense.data_emissao).slice(8, 10)) || 1;
-    const week = Math.min(4, Math.floor((day - 1) / 7));
+    const expenseDate = parseLocalDate(expense.data_emissao);
+    if (!expenseDate) return;
+    const week = Math.min(totals.length - 1, Math.floor((expenseDate - start) / 86400000 / 7));
     totals[week][1] += Number(expense.valor_total || 0);
   });
   return totals;
 }
 
 function dailyTotals(expenses) {
+  const { start, endExclusive } = getCycleBounds();
+  const cycleDays = Math.round((endExclusive - start) / 86400000);
   let running = 0;
-  return Array.from({ length: daysInMonth(selectedMonth) }, (_, index) => {
-    const day = index + 1;
-    running += sum(expenses.filter((expense) => Number(String(expense.data_emissao).slice(8, 10)) === day), (expense) => expense.valor_total);
-    return [String(day), running];
+  return Array.from({ length: cycleDays }, (_, index) => {
+    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
+    const key = localDateKey(date);
+    running += sum(expenses.filter((expense) => expense.data_emissao === key), (expense) => expense.valor_total);
+    return [String(date.getDate()), running];
   });
 }
 
@@ -653,15 +795,36 @@ function populateSelects() {
 
 function setView(view) {
   document.querySelectorAll(".view").forEach((element) => element.classList.toggle("is-active", element.id === `${view}View`));
-  document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    const active = button.dataset.view === view;
+    button.classList.toggle("is-active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (view === "home") window.requestAnimationFrame(() => drawCharts(getStats()));
 }
 
 function getWebhookUrl(showMessage = true) {
   const configured = window.N8N_UPLOAD_WEBHOOK_URL || document.querySelector('meta[name="N8N_UPLOAD_WEBHOOK_URL"]')?.content || localStorage.getItem("N8N_UPLOAD_WEBHOOK_URL") || state.settings.webhookUrl || "";
   if (!configured && showMessage) {
     dom.uploadMessage.textContent = "Configure a URL do webhook n8n em Perfil antes de enviar.";
+    return "";
+  }
+  if (configured && !isValidWebhookUrl(configured)) {
+    if (showMessage) dom.uploadMessage.textContent = "Use uma URL HTTPS válida para o webhook n8n.";
+    return "";
   }
   return configured;
+}
+
+function isValidWebhookUrl(value) {
+  try {
+    const url = new URL(String(value).trim());
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
+  }
 }
 
 function createExpenseFromForm(form, origin) {
@@ -682,26 +845,35 @@ function createExpenseFromForm(form, origin) {
 
 function normalizeExpense(data) {
   const source = data && typeof data === "object" ? data : {};
-  const total = parseMoney(pickValue(source, ["valor_total", "valorTotal", "total", "valor", "valor_compra", "valor_gasto", "amount"]));
-  const products = parseMoney(pickValue(source, ["valor_produtos", "valorProdutos", "subtotal", "valor_itens", "valor_dos_produtos"])) || total;
-  const shipping = parseMoney(pickValue(source, ["valor_frete", "valorFrete", "frete"]));
-  const discount = parseMoney(pickValue(source, ["valor_desconto", "valorDesconto", "desconto"]));
-  const supplier = pickValue(source, ["fornecedor", "estabelecimento", "nome_estabelecimento", "nomeEstabelecimento", "loja", "empresa", "merchant"]);
-  const description = pickValue(source, ["descricao", "descricao_gasto", "descricaoGasto", "resumo", "itens_resumo", "nome_compra"]);
+  const total = Math.max(0, parseMoney(pickValue(source, ["valor_total", "valorTotal", "total", "valor", "valor_compra", "valor_gasto", "amount"])));
+  const products = Math.max(0, parseMoney(pickValue(source, ["valor_produtos", "valorProdutos", "subtotal", "valor_itens", "valor_dos_produtos"]))) || total;
+  const shipping = Math.max(0, parseMoney(pickValue(source, ["valor_frete", "valorFrete", "frete"])));
+  const discount = Math.max(0, parseMoney(pickValue(source, ["valor_desconto", "valorDesconto", "desconto"])));
+  const supplier = safeText(pickValue(source, ["fornecedor", "estabelecimento", "nome_estabelecimento", "nomeEstabelecimento", "loja", "empresa", "merchant"]), 160);
+  const description = safeText(pickValue(source, ["descricao", "descricao_gasto", "descricaoGasto", "resumo", "itens_resumo", "nome_compra"]), 240);
   const issueDate = normalizeDate(pickValue(source, ["data_emissao", "dataEmissao", "data_compra", "dataCompra", "data", "emissao"]));
   const dueDate = normalizeDate(pickValue(source, ["data_vencimento", "dataVencimento", "vencimento"]));
   const confidence = parseConfidence(pickValue(source, ["confianca_leitura", "confiancaLeitura", "confianca", "confidence", "score"]));
-  const items = pickValue(source, ["itens_json", "itens", "itens_comprados", "items", "produtos"]);
+  const itemsSource = pickValue(source, ["itens_json", "itens", "itens_comprados", "items", "produtos"]);
+  const parsedItems = Array.isArray(itemsSource) ? itemsSource : parseJson(itemsSource, []);
+  const items = Array.isArray(parsedItems)
+    ? parsedItems.slice(0, 50).map((item) => ({
+      nome: safeText(item?.nome || item?.descricao || item?.produto || item?.name || "Item", 160),
+      valor: Math.max(0, parseMoney(item?.valor || item?.preco || item?.price)),
+    }))
+    : [];
+  const sourceId = safeText(source.id, 80);
+  const origin = normalizeOrigin(source.origem);
 
   return {
-    id: source.id || crypto.randomUUID(),
+    id: /^[a-zA-Z0-9_-]{1,80}$/.test(sourceId) ? sourceId : crypto.randomUUID(),
     data_registro: normalizeDate(pickValue(source, ["data_registro", "dataRegistro"])) || new Date().toISOString().slice(0, 10),
     fornecedor: supplier || "",
-    cnpj_fornecedor: pickValue(source, ["cnpj_fornecedor", "cnpjFornecedor", "cnpj", "cnpj_estabelecimento"]) || "",
-    numero_nota: pickValue(source, ["numero_nota", "numeroNota", "numero_da_nota", "numero", "nf", "nota_fiscal", "chave_acesso"]) || "",
+    cnpj_fornecedor: safeText(pickValue(source, ["cnpj_fornecedor", "cnpjFornecedor", "cnpj", "cnpj_estabelecimento"]), 32),
+    numero_nota: safeText(pickValue(source, ["numero_nota", "numeroNota", "numero_da_nota", "numero", "nf", "nota_fiscal", "chave_acesso"]), 80),
     data_emissao: issueDate || new Date().toISOString().slice(0, 10),
     data_vencimento: dueDate || "",
-    status_vencimento: pickValue(source, ["status_vencimento", "statusVencimento"]) || "",
+    status_vencimento: safeText(pickValue(source, ["status_vencimento", "statusVencimento"]), 40),
     categoria: normalizeCategory(pickValue(source, ["categoria", "category"])) || "Outros",
     descricao: description || supplier || "Gasto",
     forma_pagamento: normalizePaymentMethod(pickValue(source, ["forma_pagamento", "formaPagamento", "pagamento", "meio_pagamento"])) || "Pix",
@@ -710,16 +882,26 @@ function normalizeExpense(data) {
     valor_desconto: discount,
     valor_total: total,
     status_pagamento: normalizePaymentStatus(pickValue(source, ["status_pagamento", "statusPagamento", "status", "situacao"])) || "Pendente",
-    itens_json: Array.isArray(items) ? items : parseJson(items, []),
-    dica_financeira: pickValue(source, ["dica_financeira", "dicaFinanceira", "dica"]) || "",
-    alerta_financeiro: pickValue(source, ["alerta_financeiro", "alertaFinanceiro", "alerta"]) || "",
+    itens_json: items,
+    dica_financeira: safeText(pickValue(source, ["dica_financeira", "dicaFinanceira", "dica"]), 500),
+    alerta_financeiro: safeText(pickValue(source, ["alerta_financeiro", "alertaFinanceiro", "alerta"]), 500),
     confianca_leitura: confidence,
-    observacoes: pickValue(source, ["observacoes", "observacao", "obs"]) || "",
-    itens_resumo: pickValue(source, ["itens_resumo", "itensResumo", "resumo_itens"]) || summarizeItems(items),
-    qtd_itens: Number(pickValue(source, ["qtd_itens", "qtdItens", "quantidade_itens"]) || (Array.isArray(items) ? items.length : 0)),
-    nf_json_completo: pickValue(source, ["nf_json_completo", "nfJsonCompleto"]) || JSON.stringify(source),
-    origem: source.origem || "Comprovante",
+    observacoes: safeText(pickValue(source, ["observacoes", "observacao", "obs"]), 1000),
+    itens_resumo: safeText(pickValue(source, ["itens_resumo", "itensResumo", "resumo_itens"]), 1000) || summarizeItems(items),
+    qtd_itens: Math.max(0, Math.min(999, Number(pickValue(source, ["qtd_itens", "qtdItens", "quantidade_itens"]) || items.length))),
+    origem: origin,
   };
+}
+
+function safeText(value, maxLength = 500) {
+  return String(value ?? "").replace(/\0/g, "").trim().slice(0, maxLength);
+}
+
+function normalizeOrigin(value) {
+  const normalized = normalizeKey(value);
+  if (normalized === "notafiscal") return "Nota fiscal";
+  if (normalized === "registromanual") return "Registro manual";
+  return "Comprovante";
 }
 
 function parseJson(value, fallback) {
@@ -838,28 +1020,35 @@ function parseMoney(value) {
 
 function normalizeDate(value) {
   if (!value) return "";
-  if (value instanceof Date && !Number.isNaN(value.valueOf())) return value.toISOString().slice(0, 10);
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) return localDateKey(value);
   const text = String(value).trim();
   const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  if (iso) return isValidDateParts(iso[1], iso[2], iso[3]) ? `${iso[1]}-${iso[2]}-${iso[3]}` : "";
   const br = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
   if (br) {
     const year = br[3].length === 2 ? `20${br[3]}` : br[3];
-    return `${year}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+    const month = br[2].padStart(2, "0");
+    const day = br[1].padStart(2, "0");
+    return isValidDateParts(year, month, day) ? `${year}-${month}-${day}` : "";
   }
   return "";
+}
+
+function isValidDateParts(year, month, day) {
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  return parsed.getFullYear() === Number(year) && parsed.getMonth() === Number(month) - 1 && parsed.getDate() === Number(day);
 }
 
 function normalizeCategory(value) {
   if (!value) return "";
   const normalized = normalizeKey(value);
-  return categories.find((category) => normalizeKey(category) === normalized) || String(value);
+  return categories.find((category) => normalizeKey(category) === normalized) || "Outros";
 }
 
 function normalizePaymentMethod(value) {
   if (!value) return "";
   const normalized = normalizeKey(value);
-  return paymentMethods.find((method) => normalizeKey(method) === normalized) || String(value);
+  return paymentMethods.find((method) => normalizeKey(method) === normalized) || "";
 }
 
 function normalizePaymentStatus(value) {
@@ -867,12 +1056,13 @@ function normalizePaymentStatus(value) {
   const normalized = normalizeKey(value);
   if (["pago", "paga", "quitado", "quitada", "paid"].includes(normalized)) return "Pago";
   if (["pendente", "aberto", "emaberto", "vencido", "vencida", "pending"].includes(normalized)) return "Pendente";
-  return String(value);
+  return "";
 }
 
 function parseConfidence(value) {
+  if (value === "" || value === null || value === undefined) return 0.8;
   const parsed = parseMoney(value);
-  if (!parsed) return 0.8;
+  if (!parsed) return 0;
   return parsed > 1 ? Math.min(parsed / 100, 1) : Math.min(parsed, 1);
 }
 
@@ -894,23 +1084,28 @@ async function sendReceipt() {
   setProcessing(true);
   const formData = new FormData();
   formData.append("Nota Fiscal", selectedFile, selectedFile.name);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 20000);
 
   try {
     await animateProcessing();
-    const response = await fetch(webhookUrl, { method: "POST", body: formData });
+    const response = await fetch(webhookUrl, { method: "POST", body: formData, signal: controller.signal });
     if (!response.ok) throw new Error("Erro no envio.");
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > 200000) throw new Error("Resposta muito grande.");
     const responseText = await response.text();
+    if (responseText.length > 200000) throw new Error("Resposta muito grande.");
     const payload = parsePayloadValue(responseText);
     const extractedPayload = extractExpensePayload(payload);
     const identified = normalizeExpense(extractedPayload);
     if (!scoreExpenseCandidate(extractedPayload)) {
       identified.confianca_leitura = 0.45;
-      identified.alerta_financeiro = "O n8n respondeu, mas o app nao reconheceu os campos retornados.";
+      identified.alerta_financeiro = "O n8n respondeu, mas o app não reconheceu os campos retornados.";
     }
     pendingReview = identified;
     openReview(identified);
     dom.uploadMessage.textContent = Number(identified.confianca_leitura) < 0.75
-      ? "Comprovante recebido. Alguns campos precisam de revisao."
+      ? "Comprovante recebido. Alguns campos precisam de revisão."
       : "Comprovante lido. Revise os dados antes de confirmar.";
   } catch (error) {
     const fallback = normalizeExpense({
@@ -925,8 +1120,11 @@ async function sendReceipt() {
     });
     pendingReview = fallback;
     openReview(fallback);
-    dom.uploadMessage.textContent = "Falha de conexao ou leitura. Voce pode revisar e salvar manualmente.";
+    dom.uploadMessage.textContent = error?.name === "AbortError"
+      ? "A leitura demorou mais de 20 segundos. Revise e salve os dados manualmente."
+      : "Falha de conexão ou leitura. Você pode revisar e salvar manualmente.";
   } finally {
+    window.clearTimeout(timeoutId);
     setProcessing(false);
   }
 }
@@ -934,11 +1132,11 @@ async function sendReceipt() {
 function validateFile(file) {
   const allowed = ["image/jpeg", "image/png", "image/webp"];
   if (!allowed.includes(file.type)) {
-    dom.uploadMessage.textContent = "Formato invalido. Use JPG, JPEG, PNG ou WEBP.";
+    dom.uploadMessage.textContent = "Formato inválido. Use JPG, JPEG, PNG ou WEBP.";
     return false;
   }
   if (file.size > 8 * 1024 * 1024) {
-    dom.uploadMessage.textContent = "Imagem muito grande. Envie um arquivo de ate 8 MB.";
+    dom.uploadMessage.textContent = "Imagem muito grande. Envie um arquivo de até 8 MB.";
     return false;
   }
   return true;
@@ -968,16 +1166,21 @@ function animateProcessing() {
   return promise;
 }
 
-function openReview(expense) {
+function openReview(expense, mode = "create") {
+  reviewMode = mode;
+  pendingReview = normalizeExpense(expense);
+  dom.reviewEyebrow.textContent = mode === "edit" ? "Edição" : "Revisão";
+  dom.reviewTitle.textContent = mode === "edit" ? "Editar gasto" : "Revisar gasto identificado";
+  dom.confirmReview.textContent = mode === "edit" ? "Salvar alterações" : "Confirmar gasto";
   dom.confidenceWarning.classList.toggle("is-hidden", Number(expense.confianca_leitura) >= 0.75);
   const fields = [
     ["fornecedor", "Nome do estabelecimento", "text"],
     ["cnpj_fornecedor", "CNPJ", "text"],
-    ["numero_nota", "Numero da nota", "text"],
+    ["numero_nota", "Número da nota", "text"],
     ["data_emissao", "Data da compra", "date"],
     ["data_vencimento", "Data de vencimento", "date"],
     ["categoria", "Categoria", "select"],
-    ["descricao", "Descricao", "text"],
+    ["descricao", "Descrição", "text"],
     ["forma_pagamento", "Forma de pagamento", "select-payment"],
     ["valor_produtos", "Valor dos produtos", "number"],
     ["valor_frete", "Valor do frete", "number"],
@@ -985,45 +1188,75 @@ function openReview(expense) {
     ["valor_total", "Valor total", "number"],
     ["status_pagamento", "Status do pagamento", "select-status"],
     ["itens_resumo", "Itens comprados", "textarea"],
-    ["observacoes", "Observacoes", "textarea"],
+    ["observacoes", "Observações", "textarea"],
   ];
-  dom.reviewForm.innerHTML = fields.map(([name, label, type]) => fieldHtml(name, label, type, expense[name])).join("");
-  dom.reviewModal.classList.remove("is-hidden");
+  dom.reviewForm.replaceChildren(...fields.map(([name, label, type]) => createReviewField(name, label, type, pendingReview[name])));
+  openOverlay(dom.reviewModal, "input,select,textarea");
 }
 
-function fieldHtml(name, label, type, value) {
-  if (type === "select") {
-    return `<label class="field"><span>${label}</span><select name="${name}">${categories.map((category) => `<option ${category === value ? "selected" : ""}>${category}</option>`).join("")}</select></label>`;
+function createReviewField(name, labelText, type, value) {
+  const label = document.createElement("label");
+  label.className = `field ${type === "textarea" ? "field-full" : ""}`.trim();
+  const text = document.createElement("span");
+  text.textContent = labelText;
+  label.append(text);
+
+  let control;
+  if (["select", "select-payment", "select-status"].includes(type)) {
+    control = document.createElement("select");
+    const values = type === "select" ? categories : type === "select-payment" ? paymentMethods : ["Pago", "Pendente"];
+    values.forEach((optionValue) => {
+      const option = document.createElement("option");
+      option.value = optionValue;
+      option.textContent = optionValue;
+      control.append(option);
+    });
+  } else if (type === "textarea") {
+    control = document.createElement("textarea");
+    control.rows = 3;
+    control.maxLength = name === "observacoes" ? 1000 : 1000;
+  } else {
+    control = document.createElement("input");
+    control.type = type;
+    if (type === "number") {
+      control.min = "0";
+      control.step = "0.01";
+    } else if (type === "text") {
+      control.maxLength = name === "descricao" ? 240 : 160;
+    }
   }
-  if (type === "select-payment") {
-    return `<label class="field"><span>${label}</span><select name="${name}">${paymentMethods.map((method) => `<option ${method === value ? "selected" : ""}>${method}</option>`).join("")}</select></label>`;
-  }
-  if (type === "select-status") {
-    return `<label class="field"><span>${label}</span><select name="${name}"><option ${value === "Pago" ? "selected" : ""}>Pago</option><option ${value === "Pendente" ? "selected" : ""}>Pendente</option></select></label>`;
-  }
-  if (type === "textarea") {
-    return `<label class="field field-full"><span>${label}</span><textarea name="${name}" rows="3">${sanitizeText(value || "")}</textarea></label>`;
-  }
-  const step = type === "number" ? ' step="0.01" min="0"' : "";
-  return `<label class="field"><span>${label}</span><input name="${name}" type="${type}" value="${sanitizeText(value || "")}"${step} /></label>`;
+  control.name = name;
+  control.value = value ?? "";
+  control.required = ["data_emissao", "categoria", "descricao", "forma_pagamento", "valor_total", "status_pagamento"].includes(name);
+  label.append(control);
+  return label;
 }
 
 function confirmReview() {
+  if (!dom.reviewForm.reportValidity()) return;
   const formData = Object.fromEntries(new FormData(dom.reviewForm).entries());
   const expense = normalizeExpense({ ...pendingReview, ...formData });
+  if (reviewMode === "create") prepareForRealData();
   state.expenses = [expense, ...state.expenses.filter((item) => item.id !== expense.id)];
+  const wasEditing = reviewMode === "edit";
   closeReview();
-  clearSelectedImage();
-  selectedMonth = new Date(`${expense.data_emissao}T00:00:00`);
-  selectedMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1);
-  dom.staleBanner.classList.remove("is-hidden");
+  if (!wasEditing) clearSelectedImage();
+  selectedMonth = cycleAnchorForDate(expense.data_emissao);
   render();
-  setView("home");
+  if (wasEditing) {
+    setView("expenses");
+    openDetail(expense.id);
+    showToast("Alterações salvas.");
+  } else {
+    setView("home");
+    showToast("Gasto salvo neste dispositivo.");
+  }
 }
 
 function closeReview() {
   pendingReview = null;
-  dom.reviewModal.classList.add("is-hidden");
+  reviewMode = "create";
+  closeOverlay(dom.reviewModal);
 }
 
 function clearSelectedImage() {
@@ -1045,12 +1278,12 @@ function openDetail(id) {
   const items = [
     ["Estabelecimento", expense.fornecedor || "-"],
     ["CNPJ", expense.cnpj_fornecedor || "-"],
-    ["Numero da nota", expense.numero_nota || "-"],
+    ["Número da nota", expense.numero_nota || "-"],
     ["Data da compra", dateBR(expense.data_emissao)],
     ["Data do registro", dateBR(expense.data_registro)],
     ["Data de vencimento", dateBR(expense.data_vencimento)],
     ["Categoria", expense.categoria],
-    ["Descricao", expense.descricao],
+    ["Descrição", expense.descricao],
     ["Forma de pagamento", expense.forma_pagamento],
     ["Valor dos produtos", currency(expense.valor_produtos)],
     ["Frete", currency(expense.valor_frete)],
@@ -1060,11 +1293,24 @@ function openDetail(id) {
     ["Itens comprados", expense.itens_resumo || (expense.itens_json || []).map((item) => item.nome).join(", ") || "-"],
     ["Dica financeira", expense.dica_financeira || "-"],
     ["Alerta financeiro", expense.alerta_financeiro || "-"],
-    ["Confianca da leitura", `${Math.round(Number(expense.confianca_leitura || 0) * 100)}%`],
-    ["Observacoes", expense.observacoes || "-"],
+    ["Confiança da leitura", `${Math.round(Number(expense.confianca_leitura || 0) * 100)}%`],
+    ["Observações", expense.observacoes || "-"],
   ];
   dom.detailContent.innerHTML = items.map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${sanitizeText(value)}</strong></div>`).join("");
-  dom.detailModal.classList.remove("is-hidden");
+  dom.markPaid.classList.toggle("is-hidden", expense.status_pagamento === "Pago");
+  dom.markPending.classList.toggle("is-hidden", expense.status_pagamento === "Pendente");
+  openOverlay(dom.detailModal, "#editExpense");
+}
+
+function closeDetailModal() {
+  closeOverlay(dom.detailModal);
+}
+
+function editSelectedExpense() {
+  const expense = state.expenses.find((item) => item.id === selectedExpenseId);
+  if (!expense) return;
+  closeDetailModal();
+  openReview(expense, "edit");
 }
 
 function updateSelectedStatus(status) {
@@ -1072,26 +1318,112 @@ function updateSelectedStatus(status) {
   if (!expense) return;
   expense.status_pagamento = status;
   saveState();
-  openDetail(expense.id);
   render();
+  openDetail(expense.id);
+  showToast(`Gasto marcado como ${status.toLowerCase()}.`);
 }
 
-function shareSelectedExpense() {
+async function shareSelectedExpense() {
   const expense = state.expenses.find((item) => item.id === selectedExpenseId);
   if (!expense) return;
   const text = `${expense.fornecedor || expense.descricao} - ${dateBR(expense.data_emissao)} - ${currency(expense.valor_total)} - ${expense.status_pagamento}`;
-  if (navigator.share) navigator.share({ title: "Resumo do gasto", text });
-  else navigator.clipboard?.writeText(text);
+  try {
+    if (navigator.share) await navigator.share({ title: "Resumo do gasto", text });
+    else {
+      await navigator.clipboard?.writeText(text);
+      showToast("Resumo copiado.");
+    }
+  } catch (error) {
+    if (error?.name !== "AbortError") showToast("Não foi possível compartilhar o resumo.");
+  }
 }
 
 function deleteSelectedExpense() {
   const expense = state.expenses.find((item) => item.id === selectedExpenseId);
   if (!expense) return;
   if (!confirm(`Excluir o gasto "${expense.fornecedor || expense.descricao}"?`)) return;
+  const index = state.expenses.findIndex((item) => item.id === selectedExpenseId);
+  lastDeletedExpense = { expense: structuredClone(expense), index };
   state.expenses = state.expenses.filter((item) => item.id !== selectedExpenseId);
   selectedExpenseId = null;
-  dom.detailModal.classList.add("is-hidden");
+  closeDetailModal();
   render();
+  showToast("Gasto excluído.", "Desfazer");
+}
+
+function undoDelete() {
+  if (!lastDeletedExpense) return;
+  const { expense, index } = lastDeletedExpense;
+  state.expenses.splice(Math.max(0, index), 0, expense);
+  lastDeletedExpense = null;
+  render();
+  showToast("Gasto restaurado.");
+}
+
+function prepareForRealData() {
+  if (!state.demoMode) return;
+  state.expenses = state.expenses.filter((expense) => !String(expense.id).startsWith("sample-"));
+  state.demoMode = false;
+}
+
+function clearDemoData() {
+  prepareForRealData();
+  selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
+  render();
+  showToast("Dados de demonstração removidos. Agora você pode registrar seus gastos.");
+}
+
+function showToast(message, actionLabel = "") {
+  window.clearTimeout(toastTimer);
+  dom.toastMessage.textContent = message;
+  dom.toastAction.textContent = actionLabel;
+  dom.toastAction.classList.toggle("is-hidden", !actionLabel);
+  dom.toastRegion.classList.remove("is-hidden");
+  toastTimer = window.setTimeout(() => {
+    dom.toastRegion.classList.add("is-hidden");
+    if (actionLabel === "Desfazer") lastDeletedExpense = null;
+  }, 7000);
+}
+
+function openOverlay(element, focusSelector) {
+  lastFocusedElement = document.activeElement;
+  element.classList.remove("is-hidden");
+  element.setAttribute("aria-hidden", "false");
+  document.body.classList.add("has-overlay");
+  window.setTimeout(() => element.querySelector(focusSelector || "button,input,select,textarea")?.focus(), 0);
+}
+
+function closeOverlay(element) {
+  element.classList.add("is-hidden");
+  element.setAttribute("aria-hidden", "true");
+  if (![dom.reviewModal, dom.detailModal, dom.filterDrawer].some((overlay) => !overlay.classList.contains("is-hidden"))) {
+    document.body.classList.remove("has-overlay");
+  }
+  if (lastFocusedElement instanceof HTMLElement) lastFocusedElement.focus();
+}
+
+function handleOverlayKeydown(event) {
+  const overlay = [dom.reviewModal, dom.detailModal, dom.filterDrawer].find((item) => !item.classList.contains("is-hidden"));
+  if (!overlay) return;
+  if (event.key === "Escape") {
+    if (overlay === dom.reviewModal) closeReview();
+    else if (overlay === dom.detailModal) closeDetailModal();
+    else closeOverlay(dom.filterDrawer);
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = [...overlay.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => !element.classList.contains("is-hidden"));
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function bindEvents() {
@@ -1111,6 +1443,8 @@ function bindEvents() {
   });
   dom.refreshDashboard.addEventListener("click", refreshDataNow);
   dom.refreshData.addEventListener("click", refreshDataNow);
+  dom.lockApp.addEventListener("click", lockApp);
+  dom.clearDemoData.addEventListener("click", clearDemoData);
   dom.searchInput.addEventListener("input", renderExpenses);
   dom.showUpload.addEventListener("click", () => toggleAddMode("upload"));
   dom.showManual.addEventListener("click", () => toggleAddMode("manual"));
@@ -1120,12 +1454,13 @@ function bindEvents() {
   dom.manualForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const expense = createExpenseFromForm(dom.manualForm, "Registro manual");
+    prepareForRealData();
     state.expenses.unshift(expense);
     dom.manualForm.reset();
-    selectedMonth = new Date(`${expense.data_emissao}T00:00:00`);
-    selectedMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1);
+    selectedMonth = cycleAnchorForDate(expense.data_emissao);
     render();
     setView("home");
+    showToast("Gasto salvo neste dispositivo.");
   });
   dom.settingsForm.addEventListener("submit", saveSettings);
   dom.expensesList.addEventListener("click", (event) => {
@@ -1136,13 +1471,14 @@ function bindEvents() {
   dom.cancelReview.addEventListener("click", closeReview);
   dom.editReview.addEventListener("click", () => dom.reviewForm.querySelector("input,select,textarea")?.focus());
   dom.confirmReview.addEventListener("click", confirmReview);
-  dom.closeDetail.addEventListener("click", () => dom.detailModal.classList.add("is-hidden"));
+  dom.closeDetail.addEventListener("click", closeDetailModal);
+  dom.editExpense.addEventListener("click", editSelectedExpense);
   dom.markPaid.addEventListener("click", () => updateSelectedStatus("Pago"));
   dom.markPending.addEventListener("click", () => updateSelectedStatus("Pendente"));
   dom.shareExpense.addEventListener("click", shareSelectedExpense);
   dom.deleteExpense.addEventListener("click", deleteSelectedExpense);
-  dom.openFilters.addEventListener("click", () => dom.filterDrawer.classList.remove("is-hidden"));
-  dom.closeFilters.addEventListener("click", () => dom.filterDrawer.classList.add("is-hidden"));
+  dom.openFilters.addEventListener("click", () => openOverlay(dom.filterDrawer, "select,input"));
+  dom.closeFilters.addEventListener("click", () => closeOverlay(dom.filterDrawer));
   dom.clearFilters.addEventListener("click", () => {
     state.filters = structuredClone(defaultState.filters);
     dom.filterForm.reset();
@@ -1151,41 +1487,120 @@ function bindEvents() {
   dom.filterForm.addEventListener("submit", (event) => {
     event.preventDefault();
     state.filters = { ...state.filters, ...Object.fromEntries(new FormData(dom.filterForm).entries()) };
-    dom.filterDrawer.classList.add("is-hidden");
+    closeOverlay(dom.filterDrawer);
     renderExpenses();
   });
+  [dom.homeAlerts, dom.alertsList].forEach((container) => container.addEventListener("click", handleAlertAction));
+  dom.toastAction.addEventListener("click", undoDelete);
+  [dom.reviewModal, dom.detailModal, dom.filterDrawer].forEach((overlay) => {
+    overlay.addEventListener("click", (event) => {
+      if (event.target !== overlay) return;
+      if (overlay === dom.reviewModal) closeReview();
+      else if (overlay === dom.detailModal) closeDetailModal();
+      else closeOverlay(dom.filterDrawer);
+    });
+  });
+  document.addEventListener("keydown", handleOverlayKeydown);
   window.addEventListener("resize", () => drawCharts(getStats()));
 }
 
-function authenticate() {
+function handleAlertAction(event) {
+  const action = event.target.closest("[data-alert-expense-id],[data-alert-view]");
+  if (!action) return;
+  if (action.dataset.alertExpenseId) {
+    setView("expenses");
+    openDetail(action.dataset.alertExpenseId);
+  } else if (action.dataset.alertView) {
+    setView(action.dataset.alertView);
+  }
+}
+
+async function authenticate() {
   const pin = dom.pinInput.value.trim();
-  if (pin.length < 4) {
-    dom.authMessage.textContent = "Informe um PIN com pelo menos 4 digitos.";
+  if (!/^\d{4,12}$/.test(pin)) {
+    dom.authMessage.textContent = "Informe um PIN de 4 a 12 dígitos.";
     return;
   }
-  const savedPin = localStorage.getItem(pinKey);
-  if (savedPin && savedPin !== pin) {
-    dom.authMessage.textContent = "PIN incorreto.";
-    return;
+  dom.authButton.disabled = true;
+  dom.authMessage.textContent = "Verificando...";
+  try {
+    const savedCredential = localStorage.getItem(pinHashKey);
+    const legacyPin = localStorage.getItem(pinKey);
+    if (savedCredential && !(await verifyPin(pin, savedCredential))) {
+      dom.authMessage.textContent = "PIN incorreto.";
+      return;
+    }
+    if (!savedCredential && legacyPin && legacyPin !== pin) {
+      dom.authMessage.textContent = "PIN incorreto.";
+      return;
+    }
+    if (!savedCredential) {
+      localStorage.setItem(pinHashKey, await createPinCredential(pin));
+      localStorage.removeItem(pinKey);
+    }
+    localStorage.setItem(authSessionKey, JSON.stringify({ unlockedAt: Date.now() }));
+    unlockApp();
+  } catch {
+    dom.authMessage.textContent = "Não foi possível proteger o PIN neste navegador.";
+  } finally {
+    dom.authButton.disabled = false;
   }
-  if (!savedPin) localStorage.setItem(pinKey, pin);
-  localStorage.setItem(authSessionKey, JSON.stringify({ unlockedAt: Date.now() }));
-  unlockApp();
 }
 
 function unlockApp() {
   dom.authScreen.classList.add("is-hidden");
   dom.appShell.classList.remove("is-hidden");
+  dom.pinInput.value = "";
+  dom.authMessage.textContent = "";
   render();
 }
 
+function lockApp() {
+  localStorage.removeItem(authSessionKey);
+  dom.appShell.classList.add("is-hidden");
+  dom.authScreen.classList.remove("is-hidden");
+  dom.authMessage.textContent = "Aplicativo bloqueado. Informe seu PIN para entrar.";
+  window.setTimeout(() => dom.pinInput.focus(), 0);
+}
+
 function hasActiveAuthSession() {
-  const savedPin = localStorage.getItem(pinKey);
-  if (!savedPin) return false;
+  if (!localStorage.getItem(pinHashKey) && !localStorage.getItem(pinKey)) return false;
   const savedSession = parseJson(localStorage.getItem(authSessionKey), null);
   if (!savedSession?.unlockedAt) return false;
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-  return Date.now() - Number(savedSession.unlockedAt) < thirtyDays;
+  return Date.now() - Number(savedSession.unlockedAt) < authSessionDuration;
+}
+
+async function createPinCredential(pin) {
+  const iterations = 120000;
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derivePin(pin, salt, iterations);
+  return `pbkdf2$${iterations}$${bytesToBase64(salt)}$${bytesToBase64(hash)}`;
+}
+
+async function verifyPin(pin, credential) {
+  const [algorithm, iterationsText, saltText, hashText] = String(credential).split("$");
+  const iterations = Number(iterationsText);
+  if (algorithm !== "pbkdf2" || !Number.isInteger(iterations) || iterations < 100000 || !saltText || !hashText) return false;
+  const actual = await derivePin(pin, base64ToBytes(saltText), iterations);
+  const expected = base64ToBytes(hashText);
+  if (actual.length !== expected.length) return false;
+  let difference = 0;
+  actual.forEach((byte, index) => { difference |= byte ^ expected[index]; });
+  return difference === 0;
+}
+
+async function derivePin(pin, salt, iterations) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, 256);
+  return new Uint8Array(bits);
+}
+
+function bytesToBase64(bytes) {
+  return btoa(String.fromCharCode(...bytes));
+}
+
+function base64ToBytes(value) {
+  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 }
 
 function toggleAddMode(mode) {
@@ -1215,26 +1630,42 @@ function handleFileSelect(event) {
 function saveSettings(event) {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(dom.settingsForm).entries());
+  const webhookUrl = safeText(data.webhookUrl, 2000);
+  dom.settingsForm.webhookUrl.setCustomValidity(webhookUrl && !isValidWebhookUrl(webhookUrl) ? "Use uma URL HTTPS válida." : "");
+  if (!dom.settingsForm.reportValidity()) return;
   const categoryLimits = {};
   categories.forEach((category) => {
     const value = data[`limit_${category}`];
     if (value) categoryLimits[category] = Number(value);
   });
   state.settings = {
-    monthlyLimit: Number(data.monthlyLimit || 0),
-    cycleStartDay: Number(data.cycleStartDay || 1),
-    savingsGoal: Number(data.savingsGoal || 0),
-    webhookUrl: data.webhookUrl || "",
+    monthlyLimit: Math.max(0, Number(data.monthlyLimit || 0)),
+    cycleStartDay: Math.min(28, Math.max(1, Number(data.cycleStartDay || 1))),
+    savingsGoal: Math.max(0, Number(data.savingsGoal || 0)),
+    webhookUrl,
     categoryLimits,
   };
-  if (data.webhookUrl) localStorage.setItem("N8N_UPLOAD_WEBHOOK_URL", data.webhookUrl);
+  if (webhookUrl) localStorage.setItem("N8N_UPLOAD_WEBHOOK_URL", webhookUrl);
+  else localStorage.removeItem("N8N_UPLOAD_WEBHOOK_URL");
+  selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
   saveState();
   render();
+  showToast("Configurações salvas neste dispositivo.");
+}
+
+function normalizeCategoryLimits(limits) {
+  if (!limits || typeof limits !== "object") return {};
+  return Object.entries(limits).reduce((result, [category, value]) => {
+    const normalizedCategory = normalizeCategory(category);
+    const normalizedValue = Math.max(0, Number(value || 0));
+    if (normalizedValue) result[normalizedCategory] = normalizedValue;
+    return result;
+  }, {});
 }
 
 function initForms() {
   populateSelects();
-  dom.manualForm.data_emissao.value = new Date().toISOString().slice(0, 10);
+  dom.manualForm.data_emissao.value = localDateKey(todayLocal());
   dom.manualForm.status_pagamento.value = "Pago";
   Object.entries(state.filters).forEach(([key, value]) => {
     if (dom.filterForm.elements[key]) dom.filterForm.elements[key].value = value;
@@ -1246,6 +1677,10 @@ bindEvents();
 
 if (hasActiveAuthSession()) {
   unlockApp();
-} else if (localStorage.getItem(pinKey)) {
+} else if (localStorage.getItem(pinHashKey) || localStorage.getItem(pinKey)) {
   dom.authMessage.textContent = "Informe seu PIN para entrar.";
+}
+
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("./service-worker.js").then((registration) => registration.update()).catch(() => null);
 }
