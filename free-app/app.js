@@ -21,6 +21,7 @@ const state = {
   settings: null,
   accountsAvailable: true,
   expenseAccountAvailable: true,
+  recoveryMode: false,
   loading: false,
 };
 
@@ -110,22 +111,23 @@ function restoreSession() {
   }
 }
 
-function consumeOAuthCallback() {
-  if (!window.location.hash) return { session: null, error: null };
+function consumeAuthCallback() {
+  if (!window.location.hash) return { session: null, error: null, type: null };
   const params = new URLSearchParams(window.location.hash.slice(1));
-  const isOAuthCallback = params.has("access_token") || params.has("error") || params.has("error_description");
-  if (!isOAuthCallback) return { session: null, error: null };
+  const isAuthCallback = params.has("access_token") || params.has("error") || params.has("error_description");
+  if (!isAuthCallback) return { session: null, error: null, type: null };
+  const type = params.get("type");
 
   const cleanUrl = `${window.location.pathname}${window.location.search}`;
   window.history.replaceState(null, document.title, cleanUrl);
 
   const error = params.get("error_description") || params.get("error");
-  if (error) return { session: null, error };
+  if (error) return { session: null, error, type };
 
   const accessToken = params.get("access_token");
   const refreshToken = params.get("refresh_token");
   if (!accessToken || !refreshToken) {
-    return { session: null, error: "O Google não devolveu uma sessão válida. Tente novamente." };
+    return { session: null, error: "O link não devolveu uma sessão válida. Solicite um novo link.", type };
   }
 
   const session = {
@@ -136,7 +138,7 @@ function consumeOAuthCallback() {
     expires_at: Number(params.get("expires_at") || 0) || undefined,
   };
   saveSession(session);
-  return { session, error: null };
+  return { session, error: null, type };
 }
 
 async function readResponse(response) {
@@ -206,14 +208,49 @@ async function signUp(name, email, password) {
   });
 }
 
-function signInWithGoogle() {
-  if (!state.config) return toast("Aguarde a conexão com o banco.", "error");
+async function requestPasswordReset() {
+  const email = $("#login-email").value.trim();
+  if (!email) {
+    $("#login-email").focus();
+    toast("Informe seu e-mail para recuperar a senha.", "error");
+    return;
+  }
+
+  const button = $("#forgot-password");
+  setButtonBusy(button, true, "Enviando…");
   const redirectTo = `${window.location.origin}${window.location.pathname}`;
-  const url = new URL("/auth/v1/authorize", state.config.supabaseUrl);
-  url.searchParams.set("provider", "google");
-  url.searchParams.set("redirect_to", redirectTo);
-  url.searchParams.set("flow_type", "implicit");
-  window.location.assign(url.toString());
+  try {
+    await rawRequest(`/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
+      method: "POST",
+      body: { email },
+    });
+    toast("Se o e-mail estiver cadastrado, você receberá um link para criar uma nova senha.");
+  } catch (error) {
+    toast(error.message || "Não foi possível enviar o link de recuperação.", "error");
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function updatePassword(event) {
+  event.preventDefault();
+  const password = $("#new-password").value;
+  const confirmation = $("#confirm-password").value;
+  if (password.length < 6) return toast("A nova senha deve ter pelo menos 6 caracteres.", "error");
+  if (password !== confirmation) return toast("As senhas não são iguais.", "error");
+
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  setButtonBusy(button, true, "Salvando…");
+  try {
+    await apiRequest("/auth/v1/user", { method: "PUT", body: { password } });
+    event.currentTarget.reset();
+    state.recoveryMode = false;
+    toast("Senha alterada com sucesso.");
+  } catch (error) {
+    toast(error.message || "Não foi possível alterar a senha.", "error");
+  } finally {
+    setButtonBusy(button, false);
+  }
 }
 
 async function getUser() {
@@ -681,9 +718,10 @@ async function handleSignup(event) {
 function wireEvents() {
   $("#show-login").addEventListener("click", () => toggleAuth("login"));
   $("#show-signup").addEventListener("click", () => toggleAuth("signup"));
-  $("#google-login").addEventListener("click", signInWithGoogle);
+  $("#forgot-password").addEventListener("click", requestPasswordReset);
   $("#login-form").addEventListener("submit", handleLogin);
   $("#signup-form").addEventListener("submit", handleSignup);
+  $("#password-form").addEventListener("submit", updatePassword);
   $("#account-form").addEventListener("submit", submitAccount);
   $("#expense-form").addEventListener("submit", submitExpense);
   $("#limit-form").addEventListener("submit", submitLimit);
@@ -715,13 +753,14 @@ async function start() {
   $("#expense-date").value = todayISO();
   try {
     await loadConfig();
-    const oauth = consumeOAuthCallback();
-    if (oauth.error) {
+    const authCallback = consumeAuthCallback();
+    if (authCallback.error) {
       showOnly("#auth-view");
-      toast(oauth.error, "error");
+      toast(authCallback.error, "error");
       return;
     }
-    state.session = oauth.session || restoreSession();
+    state.recoveryMode = authCallback.type === "recovery";
+    state.session = authCallback.session || restoreSession();
     if (!state.session) return showOnly("#auth-view");
     try {
       state.user = await getUser();
@@ -731,6 +770,12 @@ async function start() {
     }
     showOnly("#app-view");
     await loadData();
+    if (state.recoveryMode) {
+      openPanel("settings");
+      $("#new-password").focus();
+      toast("Defina sua nova senha para concluir a recuperação.");
+      return;
+    }
     const requestedPanel = window.location.hash.slice(1);
     if (["dashboard", "accounts", "expenses", "settings"].includes(requestedPanel)) openPanel(requestedPanel);
   } catch (error) {
