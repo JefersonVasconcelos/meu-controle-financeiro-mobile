@@ -55,14 +55,14 @@ function dateLabel(value) {
 }
 
 function paymentLabel(value) {
-  return ({ pix: "Pix", debito: "Débito", credito: "Crédito", dinheiro: "Dinheiro", boleto: "Boleto", outro: "Outro" })[value] ?? "Outro";
+  return ({ pix: "Pix", debito: "DÃ©bito", credito: "CrÃ©dito", dinheiro: "Dinheiro", boleto: "Boleto", outro: "Outro" })[value] ?? "Outro";
 }
 
 function accountTypeLabel(value) {
   return ({
     conta_digital: "Conta digital",
     conta_corrente: "Conta corrente",
-    poupanca: "Poupança",
+    poupanca: "PoupanÃ§a",
     carteira: "Dinheiro / carteira",
     investimento: "Investimento",
     outro: "Outro",
@@ -81,7 +81,7 @@ function showOnly(viewId) {
   ["#loading-view", "#fatal-view", "#auth-view", "#app-view"].forEach((id) => $(id).classList.toggle("hidden", id !== viewId));
 }
 
-function setButtonBusy(button, busy, label = "Aguarde…") {
+function setButtonBusy(button, busy, label = "Aguardeâ€¦") {
   if (!button) return;
   if (busy) {
     button.dataset.originalLabel = button.textContent;
@@ -136,7 +136,7 @@ async function rawRequest(path, { method = "GET", body, token, headers = {} } = 
 }
 
 async function refreshSession() {
-  if (!state.session?.refresh_token) throw new ApiError("Sua sessão expirou. Entre novamente.", 401);
+  if (!state.session?.refresh_token) throw new ApiError("Sua sessÃ£o expirou. Entre novamente.", 401);
   try {
     const next = await rawRequest("/auth/v1/token?grant_type=refresh_token", {
       method: "POST",
@@ -297,7 +297,7 @@ function expenseListItem(expense, withDelete = false) {
   const title = document.createElement("strong");
   title.textContent = expense.description;
   const meta = document.createElement("span");
-  meta.textContent = [dateLabel(expense.expense_date), category?.name, account?.name, paymentLabel(expense.payment_method)].filter(Boolean).join(" · ");
+  meta.textContent = [dateLabel(expense.expense_date), category?.name, account?.name, paymentLabel(expense.payment_method)].filter(Boolean).join(" Â· ");
   copy.append(title, meta);
 
   const value = document.createElement("strong");
@@ -311,7 +311,7 @@ function expenseListItem(expense, withDelete = false) {
     remove.className = "delete-button";
     remove.title = "Excluir gasto";
     remove.setAttribute("aria-label", `Excluir ${expense.description}`);
-    remove.textContent = "×";
+    remove.textContent = "Ã—";
     remove.addEventListener("click", () => deleteExpense(expense));
     item.append(remove);
   }
@@ -333,44 +333,364 @@ function renderDashboard() {
   $("#limit-percent").textContent = `${percent}%`;
   $("#limit-caption").textContent = limit > 0 ? `${formatBRL(expenseTotal)} de ${formatBRL(limit)}` : "Defina seu limite mensal em Ajustes.";
   $("#limit-progress").style.width = `${Math.min(percent, 100)}%`;
-  $("#limit-progress").cmvߎ��G����ƭy�-shadow); }
-.metric-card span { font-size: .76rem; color: var(--muted); }
-.metric-card strong { font-size: 1.08rem; overflow-wrap: anywhere; }
-.metric-card.accent { background: linear-gradient(140deg, var(--brand), #15998f); color: #fff; border: 0; }
-.metric-card.accent span { color: rgba(255,255,255,.76); }
-.progress { height: .65rem; background: var(--brand-soft); border-radius: 99px; overflow: hidden; }
-.progress-bar { height: 100%; width: 0; background: var(--brand); transition: width .2s; }
-.progress-bar.over { background: var(--danger); }
+  $("#limit-progress").classList.toggle("over", percent > 100);
 
-.list { display: grid; gap: .2rem; }
-.list-item { display: flex; align-items: center; gap: .7rem; padding: .72rem 0; border-bottom: 1px solid #edf2f1; }
-.list-item:last-child { border-bottom: 0; }
-.list-icon { flex: 0 0 2.35rem; height: 2.35rem; border-radius: .75rem; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-weight: 800; }
-.list-copy { min-width: 0; flex: 1; }
-.list-copy strong, .list-copy span { display: block; }
-.list-copy strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .9rem; }
-.list-copy span { color: var(--muted); font-size: .75rem; margin-top: .15rem; }
-.list-value { text-align: right; font-size: .88rem; white-space: nowrap; }
-.list-value.pending { color: var(--warning); }
-.delete-button { border: 0; background: transparent; color: var(--danger); padding: .45rem; font-size: 1rem; }
-.empty { padding: 1rem .25rem; color: var(--muted); text-align: center; font-size: .85rem; }
-
-.notice { border-radius: .9rem; padding: .85rem; margin-bottom: 1rem; display: grid; gap: .25rem; font-size: .83rem; }
-.notice.warning { color: #6d3a06; background: #fff3d8; border: 1px solid #f6d48b; }
-.bottom-nav { position: fixed; z-index: 10; left: 50%; bottom: 0; transform: translateX(-50%); width: min(100%, 680px); display: grid; grid-template-columns: repeat(4, 1fr); background: rgba(255,255,255,.96); backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding: .5rem .45rem calc(.5rem + env(safe-area-inset-bottom)); }
-.bottom-nav a { border: 0; background: transparent; color: var(--muted); display: grid; justify-items: center; gap: .18rem; padding: .35rem .2rem; font-size: .69rem; font-weight: 700; text-decoration: none; }
-.bottom-nav a span { font-size: 1.25rem; line-height: 1; }
-.bottom-nav a.active { color: var(--brand); }
-
-.toast-region { position: fixed; z-index: 50; top: max(.8rem, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(calc(100% - 2rem), 480px); display: grid; gap: .5rem; pointer-events: none; }
-.toast { background: #17332f; color: #fff; border-radius: .8rem; padding: .8rem 1rem; box-shadow: 0 12px 35px rgba(0,0,0,.2); font-size: .86rem; }
-.toast.error { background: var(--danger); }
-
-@media (max-width: 390px) {
-  .form-grid { grid-template-columns: 1fr; }
-  .metric-card strong { font-size: .96rem; }
+  const recent = $("#recent-expenses");
+  if (!state.expenses.length) setEmpty(recent, "Nenhum gasto cadastrado ainda.");
+  else recent.replaceChildren(...state.expenses.slice(0, 5).map((expense) => expenseListItem(expense)));
 }
 
-@media (min-width: 681px) {
-  .app-view { border-inline: 1px solid var(--line); background: var(--bg); }
+function renderAccounts() {
+  const total = state.accounts.filter((item) => item.include_net_worth).reduce((sum, item) => sum + accountBalance(item), 0);
+  $("#accounts-total").textContent = formatBRL(total);
+  $("#account-form").querySelector("button[type=submit]").disabled = !state.accountsAvailable;
+
+  const list = $("#accounts-list");
+  if (!state.accountsAvailable) setEmpty(list, "Execute a migraÃ§Ã£o do banco para cadastrar contas.");
+  else if (!state.accounts.length) setEmpty(list, "Nenhuma conta cadastrada.");
+  else {
+    list.replaceChildren(...state.accounts.map((account) => {
+      const item = document.createElement("div");
+      item.className = "list-item";
+      const icon = document.createElement("span");
+      icon.className = "list-icon";
+      icon.textContent = account.name.slice(0, 1).toUpperCase();
+      const copy = document.createElement("div");
+      copy.className = "list-copy";
+      const title = document.createElement("strong");
+      title.textContent = account.name;
+      const meta = document.createElement("span");
+      meta.textContent = accountTypeLabel(account.type);
+      copy.append(title, meta);
+      const value = document.createElement("strong");
+      value.className = "list-value";
+      value.textContent = formatBRL(accountBalance(account));
+      item.append(icon, copy, value);
+      return item;
+    }));
+  }
 }
+
+function renderSelects() {
+  const category = $("#expense-category");
+  category.replaceChildren(new Option("Sem categoria", ""), ...state.categories.map((item) => new Option(item.name, item.id)));
+  const account = $("#expense-account");
+  account.replaceChildren(new Option("Sem conta vinculada", ""), ...state.accounts.map((item) => new Option(item.name, item.id)));
+  account.disabled = !state.expenseAccountAvailable;
+}
+
+function renderExpenses() {
+  $("#expenses-count").textContent = String(state.expenses.length);
+  const list = $("#expenses-list");
+  if (!state.expenses.length) setEmpty(list, "Nenhum gasto cadastrado.");
+  else list.replaceChildren(...state.expenses.map((expense) => expenseListItem(expense, true)));
+}
+
+function renderSettings() {
+  $("#settings-month").textContent = `Referente a ${monthLabel()}.`;
+  $("#monthly-limit").value = state.settings ? Number(state.settings.monthly_limit).toFixed(2).replace(".", ",") : "";
+  $("#session-email").textContent = state.user?.email || "";
+}
+
+function renderAll() {
+  $("#migration-warning").classList.toggle("hidden", state.accountsAvailable && state.expenseAccountAvailable);
+  renderDashboard();
+  renderAccounts();
+  renderSelects();
+  renderExpenses();
+  renderSettings();
+}
+
+function openPanel(name) {
+  $$(".panel").forEach((panel) => panel.classList.toggle("hidden", panel.id !== `panel-${name}`));
+  $$(".bottom-nav [data-panel]").forEach((button) => button.classList.toggle("active", button.dataset.panel === name));
+  const panel = $(`#panel-${name}`);
+  $("#page-title").textContent = panel?.dataset.title || "Meu Controle Financeiro";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function deleteExpense(expense) {
+  if (!window.confirm(`Excluir o gasto â€œ${expense.description}â€ de ${formatBRL(expense.amount)}?`)) return;
+  try {
+    await apiRequest(restPath("expenses", `id=eq.${encodeURIComponent(expense.id)}`), { method: "DELETE" });
+    state.expenses = state.expenses.filter((item) => item.id !== expense.id);
+    renderAll();
+    toast("Gasto excluÃ­do.");
+  } catch (error) {
+    toast(error.message || "NÃ£o foi possÃ­vel excluir.", "error");
+  }
+}
+
+async function submitAccount(event) {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  const amount = parseBRL($("#account-balance").value);
+  const name = $("#account-name").value.trim();
+  if (!name) return toast("Informe o nome da conta.", "error");
+  if (!Number.isFinite(amount)) return toast("Informe um saldo inicial vÃ¡lido.", "error");
+  setButtonBusy(button, true, "Salvandoâ€¦");
+  try {
+    await restInsert("accounts", {
+      user_id: state.user.id,
+      name,
+      type: $("#account-type").value,
+      opening_balance: amount,
+      include_net_worth: $("#account-net-worth").checked,
+    });
+    event.currentTarget.reset();
+    $("#account-balance").value = "0,00";
+    $("#account-net-worth").checked = true;
+    await loadData();
+    toast("Conta salva com sucesso.");
+  } catch (error) {
+    toast(error.message || "NÃ£o foi possÃ­vel salvar a conta.", "error");
+  } finally { setButtonBusy(button, false); }
+}
+
+async function submitExpense(event) {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  const amount = parseBRL($("#expense-amount").value);
+  const description = $("#expense-description").value.trim();
+  if (!description) return toast("Descreva o gasto.", "error");
+  if (!Number.isFinite(amount) || amount <= 0) return toast("Informe um valor maior que zero.", "error");
+
+  const payload = {
+    user_id: state.user.id,
+    description,
+    amount,
+    expense_date: $("#expense-date").value,
+    category_id: $("#expense-category").value || null,
+    payment_method: $("#expense-payment").value,
+    is_paid: $("#expense-paid").checked,
+    notes: $("#expense-notes").value.trim() || null,
+  };
+  if (state.expenseAccountAvailable) payload.account_id = $("#expense-account").value || null;
+
+  setButtonBusy(button, true, "Salvandoâ€¦");
+  try {
+    await restInsert("expenses", payload);
+    event.currentTarget.reset();
+    $("#expense-date").value = todayISO();
+    $("#expense-paid").checked = true;
+    await loadData();
+    toast("Gasto salvo com sucesso.");
+  } catch (error) {
+    toast(error.message || "NÃ£o foi possÃ­vel salvar o gasto.", "error");
+  } finally { setButtonBusy(button, false); }
+}
+
+async function submitLimit(event) {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  const amount = parseBRL($("#monthly-limit").value);
+  if (!Number.isFinite(amount) || amount < 0) return toast("Informe um limite vÃ¡lido.", "error");
+  const { year, month } = currentPeriod();
+  setButtonBusy(button, true, "Salvandoâ€¦");
+  try {
+    await restInsert("monthly_settings", { user_id: state.user.id, year, month, monthly_limit: amount }, { upsert: true, onConflict: "user_id,year,month" });
+    await loadData();
+    toast("Limite mensal salvo.");
+  } catch (error) {
+    toast(error.message || "NÃ£o foi possÃ­vel salvar o limite.", "error");
+  } finally { setButtonBusy(button, false); }
+}
+
+async function importAccounts(rawAccounts) {
+  const accountIds = new Map();
+  if (!rawAccounts.length || !state.accountsAvailable) return { accountIds, imported: 0, skipped: rawAccounts.length };
+  let imported = 0;
+  let skipped = 0;
+  for (const raw of rawAccounts) {
+    const mapped = mapLegacyAccount(raw);
+    if (!mapped) { skipped++; continue; }
+    const existing = state.accounts.find((item) => normalizeText(item.name) === normalizeText(mapped.name));
+    if (existing) {
+      if (mapped.legacyId) accountIds.set(mapped.legacyId, existing.id);
+      skipped++;
+      continue;
+    }
+    const [created] = await restInsert("accounts", {
+      user_id: state.user.id,
+      name: mapped.name,
+      type: mapped.type,
+      opening_balance: mapped.opening_balance,
+      include_net_worth: Boolean(mapped.include_net_worth),
+    });
+    if (created && mapped.legacyId) accountIds.set(mapped.legacyId, created.id);
+    if (created) state.accounts.push(created);
+    imported++;
+  }
+  return { accountIds, imported, skipped };
+}
+
+async function importCategoryLimits(settings, categoriesByName) {
+  const values = settings?.categoryLimits;
+  if (!values || typeof values !== "object" || Array.isArray(values)) return 0;
+  const { year, month } = currentPeriod();
+  const rows = Object.entries(values).flatMap(([name, rawAmount]) => {
+    const amount = parseBRL(rawAmount);
+    const categoryId = categoriesByName.get(normalizeText(name));
+    return Number.isFinite(amount) && amount >= 0 && categoryId
+      ? [{ user_id: state.user.id, category_id: categoryId, year, month, amount }]
+      : [];
+  });
+  if (!rows.length) return 0;
+  try {
+    await restInsert("category_limits", rows, { upsert: true, onConflict: "user_id,category_id,year,month" });
+    return rows.length;
+  } catch (error) {
+    if (isMissingDatabaseObject(error, "category_limits")) return 0;
+    throw error;
+  }
+}
+
+async function importBackup() {
+  const file = $("#backup-file").files?.[0];
+  if (!file) return toast("Selecione o arquivo JSON do backup.", "error");
+  if (file.size > 5 * 1024 * 1024) return toast("O backup excede o limite de 5 MB.", "error");
+  const button = $("#import-button");
+  setButtonBusy(button, true, "Importandoâ€¦");
+  $("#import-report").textContent = "";
+  try {
+    const backup = JSON.parse(await file.text());
+    const legacy = backup?.state;
+    if (!legacy || !Array.isArray(legacy.expenses)) throw new Error("Este arquivo nÃ£o tem o formato de backup esperado.");
+
+    const categoriesByName = new Map(state.categories.map((item) => [normalizeText(item.name), item.id]));
+    const accountResult = await importAccounts(Array.isArray(legacy.accounts) ? legacy.accounts : []);
+    const existing = new Set(state.expenses.map(expenseFingerprint));
+    const rows = [];
+    let invalid = 0;
+    let duplicates = 0;
+
+    for (const raw of legacy.expenses) {
+      const mapped = mapLegacyExpense(raw, categoriesByName, accountResult.accountIds);
+      if (!mapped) { invalid++; continue; }
+      if (!state.expenseAccountAvailable) delete mapped.account_id;
+      const fingerprint = expenseFingerprint(mapped);
+      if (existing.has(fingerprint)) { duplicates++; continue; }
+      existing.add(fingerprint);
+      rows.push({ ...mapped, user_id: state.user.id });
+    }
+
+    for (let index = 0; index < rows.length; index += 100) {
+      await restInsert("expenses", rows.slice(index, index + 100));
+    }
+
+    const monthlyLimit = parseBRL(legacy.settings?.monthlyLimit);
+    if (Number.isFinite(monthlyLimit) && monthlyLimit > 0) {
+      const { year, month } = currentPeriod();
+      await restInsert("monthly_settings", { user_id: state.user.id, year, month, monthly_limit: monthlyLimit }, { upsert: true, onConflict: "user_id,year,month" });
+    }
+    const categoryLimits = await importCategoryLimits(legacy.settings, categoriesByName);
+    await loadData();
+    const report = `${rows.length} gasto(s) importado(s), ${duplicates} duplicado(s), ${invalid} invÃ¡lido(s), ${accountResult.imported} conta(s) e ${categoryLimits} limite(s) de categoria.`;
+    $("#import-report").textContent = report;
+    toast("Backup importado com sucesso.");
+  } catch (error) {
+    toast(error.message || "NÃ£o foi possÃ­vel importar o backup.", "error");
+  } finally { setButtonBusy(button, false); }
+}
+
+function toggleAuth(mode) {
+  const login = mode === "login";
+  $("#login-form").classList.toggle("hidden", !login);
+  $("#signup-form").classList.toggle("hidden", login);
+  $("#show-login").classList.toggle("active", login);
+  $("#show-signup").classList.toggle("active", !login);
+  $("#show-login").setAttribute("aria-selected", String(login));
+  $("#show-signup").setAttribute("aria-selected", String(!login));
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  setButtonBusy(button, true, "Entrandoâ€¦");
+  try {
+    await signIn($("#login-email").value.trim(), $("#login-password").value);
+    state.user = await getUser();
+    showOnly("#app-view");
+    await loadData();
+  } catch (error) {
+    toast(error.message || "NÃ£o foi possÃ­vel entrar.", "error");
+  } finally { setButtonBusy(button, false); }
+}
+
+async function handleSignup(event) {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  setButtonBusy(button, true, "Criandoâ€¦");
+  try {
+    const result = await signUp($("#signup-name").value.trim(), $("#signup-email").value.trim(), $("#signup-password").value);
+    if (result?.access_token) {
+      saveSession(result);
+      state.user = await getUser();
+      showOnly("#app-view");
+      await loadData();
+      toast("Conta criada com sucesso.");
+    } else {
+      toggleAuth("login");
+      $("#login-email").value = $("#signup-email").value.trim();
+      toast("Conta criada. Confirme o e-mail e depois entre.");
+    }
+  } catch (error) {
+    toast(error.message || "NÃ£o foi possÃ­vel criar a conta.", "error");
+  } finally { setButtonBusy(button, false); }
+}
+
+function wireEvents() {
+  $("#show-login").addEventListener("click", () => toggleAuth("login"));
+  $("#show-signup").addEventListener("click", () => toggleAuth("signup"));
+  $("#login-form").addEventListener("submit", handleLogin);
+  $("#signup-form").addEventListener("submit", handleSignup);
+  $("#account-form").addEventListener("submit", submitAccount);
+  $("#expense-form").addEventListener("submit", submitExpense);
+  $("#limit-form").addEventListener("submit", submitLimit);
+  $("#import-button").addEventListener("click", importBackup);
+  $("#logout-button").addEventListener("click", signOut);
+  $("#refresh-button").addEventListener("click", () => loadData({ announce: true }).catch((error) => toast(error.message, "error")));
+  $("#retry-button").addEventListener("click", () => window.location.reload());
+  document.addEventListener("click", (event) => {
+    const target = event.target.closest?.("[data-panel], [data-go]");
+    if (!target) return;
+    openPanel(target.dataset.panel || target.dataset.go);
+  });
+  window.addEventListener("hashchange", () => {
+    const panel = window.location.hash.slice(1);
+    if (["dashboard", "accounts", "expenses", "settings"].includes(panel)) openPanel(panel);
+  });
+}
+
+async function loadConfig() {
+  const response = await fetch("/api/config", { headers: { Accept: "application/json" } });
+  const payload = await readResponse(response);
+  if (!response.ok) throw new Error(payload?.error || "Configure o banco no ambiente de hospedagem.");
+  if (!payload?.supabaseUrl || !payload?.supabasePublishableKey) throw new Error("A configuraÃ§Ã£o pÃºblica do Supabase estÃ¡ incompleta.");
+  state.config = payload;
+}
+
+async function start() {
+  wireEvents();
+  $("#expense-date").value = todayISO();
+  try {
+    await loadConfig();
+    state.session = restoreSession();
+    if (!state.session) return showOnly("#auth-view");
+    try {
+      state.user = await getUser();
+    } catch {
+      await refreshSession();
+      state.user = await getUser();
+    }
+    showOnly("#app-view");
+    await loadData();
+    const requestedPanel = window.location.hash.slice(1);
+    if (["dashboard", "accounts", "expenses", "settings"].includes(requestedPanel)) openPanel(requestedPanel);
+  } catch (error) {
+    $("#fatal-message").textContent = error.message || "NÃ£o foi possÃ­vel iniciar o aplicativo.";
+    showOnly("#fatal-view");
+  }
+}
+
+start();
