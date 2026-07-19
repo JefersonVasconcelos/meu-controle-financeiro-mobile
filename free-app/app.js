@@ -206,14 +206,34 @@ async function signUp(name, email, password) {
   });
 }
 
-function signInWithGoogle() {
+async function signInWithGoogle() {
   if (!state.config) return toast("Aguarde a conexão com o banco.", "error");
+  const button = $("#google-login");
+  setButtonBusy(button, true, "Abrindo Google…");
   const redirectTo = `${window.location.origin}${window.location.pathname}`;
   const url = new URL("/auth/v1/authorize", state.config.supabaseUrl);
   url.searchParams.set("provider", "google");
   url.searchParams.set("redirect_to", redirectTo);
   url.searchParams.set("flow_type", "implicit");
-  window.location.assign(url.toString());
+  url.searchParams.set("skip_http_redirect", "true");
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        apikey: state.config.supabasePublishableKey,
+      },
+    });
+    const payload = await readResponse(response);
+    if (!response.ok) {
+      const message = payload?.msg || payload?.message || payload?.error_description || payload?.error || "Não foi possível abrir o Google.";
+      throw new ApiError(message, response.status);
+    }
+    if (!payload?.url) throw new Error("O endereço de acesso do Google não foi recebido.");
+    window.location.assign(payload.url);
+  } catch (error) {
+    toast(error.message || "Não foi possível abrir o Google.", "error");
+    setButtonBusy(button, false);
+  }
 }
 
 async function getUser() {
