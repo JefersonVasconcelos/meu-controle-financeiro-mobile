@@ -96,6 +96,13 @@ globalThis.phase2 = {
   mergeFinancialStates,
   createEmptyState,
   stripDemoFinancialState,
+  prepareRealData(input) {
+    state = { ...state, ...input };
+    prepareForRealData();
+    return financialStateSnapshot();
+  },
+  parseCurrencyInput,
+  normalizeDeletedRecords,
   getCycleBoundsFor(anchor, settings) {
     state.settings = { ...state.settings, ...settings };
     selectedMonth = new Date(anchor[0], anchor[1], 1);
@@ -156,6 +163,12 @@ assert.strictEqual(normalized.valor_total, 12.34);
 assert.strictEqual(api.isValidWebhookUrl("https://example.com/webhook"), true);
 assert.strictEqual(api.isValidWebhookUrl("http://example.com/webhook"), false);
 assert.strictEqual(api.isValidWebhookUrl("javascript:alert(1)"), false);
+
+assert.strictEqual(api.parseCurrencyInput("2.700,00"), 2700, "O formato monetário brasileiro deve ser aceito");
+assert.strictEqual(api.parseCurrencyInput("2700,00"), 2700, "O valor com vírgula decimal deve ser aceito");
+assert.strictEqual(api.parseCurrencyInput("2700.00"), 2700, "O valor com ponto decimal deve continuar aceito");
+assert.strictEqual(api.parseCurrencyInput("R$ 1.234,56"), 1234.56, "O prefixo de moeda e os separadores devem ser normalizados");
+assert.ok(Number.isNaN(api.parseCurrencyInput("valor inválido")), "Texto sem valor não pode virar zero silenciosamente");
 
 const html = fs.readFileSync(path.join(__dirname, "..", "outputs", "controle-financeiro-mobile", "index.html"), "utf8");
 for (const requiredId of ["demoBanner", "clearDemoData", "removeDemoData", "lockApp", "savingsValue", "editExpense", "toastRegion"]) {
@@ -236,6 +249,27 @@ assert.strictEqual(cleanedMixedState.settings.categoryLimits.Mercado, undefined,
 assert.strictEqual(cleanedMixedState.settings.categoryLimits.Outros, 125, "Limites personalizados devem ser preservados");
 assert.strictEqual(cleanedMixedState.demoMode, false);
 
+const preparedRealState = api.prepareRealData({
+  ...api.createEmptyState(),
+  settings: {
+    monthlyLimit: 2200,
+    cycleStartDay: 1,
+    savingsGoal: 300,
+    monthlyIncome: 3500,
+    emergencyReserveCurrent: 1500,
+    emergencyReserveGoal: 9000,
+    categoryLimits: { Mercado: 650 },
+  },
+  expenses: [expense("sample-1", "2026-07-02", 274.7)],
+  accounts: [{ id: "sample-account-bank", name: "Conta principal", openingBalance: 2200 }],
+  incomes: [{ id: "sample-income-1", description: "Renda mensal", amount: 3500, date: "2026-07-05", accountId: "sample-account-bank" }],
+  demoMode: true,
+});
+assert.strictEqual(preparedRealState.demoMode, false, "O primeiro cadastro real deve encerrar o modo de demonstração");
+assert.strictEqual(preparedRealState.accounts.length, 0, "Contas de exemplo devem sair antes do primeiro cadastro real");
+assert.strictEqual(preparedRealState.incomes.length, 0, "Receitas de exemplo devem sair antes do primeiro cadastro real");
+assert.strictEqual(preparedRealState.expenses.length, 0, "Gastos de exemplo devem sair antes do primeiro cadastro real");
+
 const legitimateIncome = api.stripDemoFinancialState({
   settings: { monthlyIncome: 3500, cycleStartDay: 1 },
   expenses: [expense("real-only", "2026-07-10", 20)],
@@ -243,9 +277,31 @@ const legitimateIncome = api.stripDemoFinancialState({
 });
 assert.strictEqual(legitimateIncome.settings.monthlyIncome, 3500, "Um valor legítimo isolado não pode ser tratado como demonstração");
 
+const deletedAccountState = api.normalizeFinancialState({
+  accounts: [{ id: "account-old", name: "Conta antiga", openingBalance: 100, updated_at: "2026-07-18T10:00:00.000Z" }],
+  deletedRecords: [{ collection: "accounts", id: "account-old", deleted_at: "2026-07-18T11:00:00.000Z" }],
+  expenses: [],
+  deletedExpenses: [],
+});
+assert.strictEqual(deletedAccountState.accounts.length, 0, "Uma conta excluída não pode reaparecer ao normalizar o estado");
+assert.strictEqual(deletedAccountState.deletedRecords.length, 1, "A exclusão financeira deve permanecer registrada");
+
+const mergedDeletedAccount = api.mergeFinancialStates(
+  deletedAccountState,
+  { accounts: [{ id: "account-old", name: "Conta antiga", openingBalance: 100, updated_at: "2026-07-18T10:00:00.000Z" }], expenses: [], deletedExpenses: [] },
+  true,
+);
+assert.strictEqual(mergedDeletedAccount.accounts.length, 0, "A sincronização de outro dispositivo não pode restaurar uma conta excluída");
+
 assert.ok(html.includes('id="clearDemoData" type="button">Remover dados de exemplo</button>'), "O botão do aviso deve remover somente exemplos");
 assert.ok(html.includes('id="removeDemoData" class="secondary-button" type="button">Remover dados de exemplo</button>'), "A limpeza seletiva deve ficar disponível no perfil");
 assert.ok(html.includes('id="eraseCloudData" class="danger-button" type="button">Excluir todos os dados</button>'), "O botão para excluir todos os dados deve ser explícito");
+assert.ok(html.includes('name="openingBalance" type="text" inputmode="decimal"'), "O saldo inicial deve aceitar moeda brasileira");
+assert.ok(html.includes('name="amount" type="text" inputmode="decimal"'), "Receitas e transferências devem aceitar moeda brasileira");
+assert.ok(source.includes('data-delete-financial="accounts"'), "Contas devem ter exclusão individual");
+assert.ok(source.includes('data-delete-financial="incomes"'), "Receitas devem ter exclusão individual");
+assert.ok(source.includes('data-delete-financial="transfers"'), "Transferências devem ter exclusão individual");
+assert.ok(source.includes('data-delete-financial="cards"'), "Cartões devem ter exclusão individual");
 
 class MockStatement {
   constructor(db, sql) { this.db = db; this.sql = sql; this.values = []; }
@@ -362,6 +418,19 @@ class MockD1 {
   assert.strictEqual(payload.state.settings.categoryLimits.Moradia, 900, "Uma configuração personalizada deve ser preservada");
   assert.deepStrictEqual(Array.from(payload.state.expenses, (item) => item.id), ["real-1", "real-2"], "Os dois lançamentos reais devem ser preservados");
   assert.strictEqual(payload.summary.preservedExpenses, 2);
+
+  const serverDeletedState = {
+    settings: { cycleStartDay: 1, categoryLimits: {} },
+    accounts: [{ id: "server-account", name: "Conta removida", type: "Conta digital", openingBalance: 500, updated_at: "2026-07-18T10:00:00.000Z" }],
+    deletedRecords: [{ collection: "accounts", id: "server-account", deleted_at: "2026-07-18T11:00:00.000Z" }],
+    expenses: [],
+    deletedExpenses: [],
+  };
+  response = await call("PUT", "deleted@example.com", { state: serverDeletedState, expectedRevision: 0 });
+  payload = await response.json();
+  assert.strictEqual(response.status, 200);
+  assert.strictEqual(payload.state.accounts.length, 0, "O servidor deve respeitar a exclusão individual de conta");
+  assert.strictEqual(payload.state.deletedRecords.length, 1, "O servidor deve preservar o marcador de exclusão");
 
   console.log("Phase 2 tests passed.");
 })().catch((error) => {

@@ -195,7 +195,7 @@
                 <form id="accountForm" class="form-grid compact-form">
                   <label class="field"><span>Nome</span><input name="name" maxlength="80" required /></label>
                   <label class="field"><span>Tipo</span><select name="type"><option>Conta corrente</option><option>Conta digital</option><option>Poupança</option><option>Carteira</option><option>Investimento</option></select></label>
-                  <label class="field"><span>Saldo inicial</span><input name="openingBalance" type="number" step="0.01" required /></label>
+                  <label class="field"><span>Saldo inicial</span><input name="openingBalance" type="text" inputmode="decimal" placeholder="0,00" required /></label>
                   <label class="field checkbox-field"><input name="includeNetWorth" type="checkbox" checked /><span>Incluir no patrimônio</span></label>
                   <button class="primary-button field-full" type="submit">Adicionar conta</button>
                 </form>
@@ -213,7 +213,7 @@
                 <h2>Registrar receita</h2>
                 <form id="incomeForm" class="form-grid compact-form">
                   <label class="field"><span>Descrição</span><input name="description" maxlength="160" required /></label>
-                  <label class="field"><span>Valor</span><input name="amount" type="number" min="0.01" step="0.01" required /></label>
+                  <label class="field"><span>Valor</span><input name="amount" type="text" inputmode="decimal" placeholder="0,00" required /></label>
                   <label class="field"><span>Data</span><input name="date" type="date" required /></label>
                   <label class="field"><span>Conta de entrada</span><select name="accountId" required></select></label>
                   <label class="field"><span>Repetir</span><select name="recurrenceMonths"><option value="1">Somente uma vez</option><option value="6">Mensal por 6 meses</option><option value="12">Mensal por 12 meses</option></select></label>
@@ -230,7 +230,7 @@
                 <h2>Transferir entre contas</h2>
                 <form id="transferForm" class="form-grid compact-form">
                   <label class="field"><span>Descrição</span><input name="description" maxlength="160" value="Transferência" required /></label>
-                  <label class="field"><span>Valor</span><input name="amount" type="number" min="0.01" step="0.01" required /></label>
+                  <label class="field"><span>Valor</span><input name="amount" type="text" inputmode="decimal" placeholder="0,00" required /></label>
                   <label class="field"><span>Data</span><input name="date" type="date" required /></label>
                   <label class="field"><span>Conta de origem</span><select name="fromAccountId" required></select></label>
                   <label class="field"><span>Conta de destino</span><select name="toAccountId" required></select></label>
@@ -248,7 +248,7 @@
                 <form id="cardForm" class="form-grid compact-form">
                   <label class="field"><span>Nome do cartão</span><input name="name" maxlength="80" required /></label>
                   <label class="field"><span>Conta para pagamento</span><select name="accountId" required></select></label>
-                  <label class="field"><span>Limite</span><input name="limit" type="number" min="0" step="0.01" required /></label>
+                  <label class="field"><span>Limite</span><input name="limit" type="text" inputmode="decimal" placeholder="0,00" required /></label>
                   <label class="field"><span>Dia de fechamento</span><input name="closingDay" type="number" min="1" max="28" required /></label>
                   <label class="field"><span>Dia de vencimento</span><input name="dueDay" type="number" min="1" max="28" required /></label>
                   <button class="primary-button field-full" type="submit">Adicionar cartão</button>
@@ -353,7 +353,7 @@
               </label>
               <label class="field">
                 <span>Valor</span>
-                <input name="valor_total" type="number" min="0" step="0.01" required />
+                <input name="valor_total" type="text" inputmode="decimal" placeholder="0,00" required />
               </label>
               <label class="field">
                 <span>Forma de pagamento</span>
@@ -484,7 +484,7 @@
                 <h2>Simular outro ritmo</h2>
                 <div class="scenario-controls">
                   <label class="field"><span>Ajuste nos gastos: <strong id="paceAdjustmentLabel">0%</strong></span><input id="paceAdjustment" type="range" min="-50" max="50" value="0" step="5" /></label>
-                  <label class="field"><span>Alteração mensal da renda</span><input id="incomeAdjustment" type="number" step="50" value="0" /></label>
+                  <label class="field"><span>Alteração mensal da renda</span><input id="incomeAdjustment" type="text" inputmode="decimal" value="0" /></label>
                 </div>
                 <div id="scenarioResult" class="summary-list"></div>
               </article>
@@ -514,7 +514,7 @@
             <form id="settingsForm" class="form-grid">
               <label class="field">
                 <span>Valor disponível no ciclo</span>
-                <input name="monthlyLimit" type="number" min="0" step="0.01" required />
+                <input name="monthlyLimit" type="text" inputmode="decimal" placeholder="0,00" required />
               </label>
               <label class="field">
                 <span>Dia de início do ciclo</span>
@@ -522,19 +522,19 @@
               </label>
               <label class="field">
                 <span>Meta de economia</span>
-                <input name="savingsGoal" type="number" min="0" step="0.01" />
+                <input name="savingsGoal" type="text" inputmode="decimal" placeholder="0,00" />
               </label>
               <label class="field">
                 <span>Renda líquida mensal</span>
-                <input name="monthlyIncome" type="number" min="0" step="0.01" />
+                <input name="monthlyIncome" type="text" inputmode="decimal" placeholder="0,00" />
               </label>
               <label class="field">
                 <span>Reserva de emergência atual</span>
-                <input name="emergencyReserveCurrent" type="number" min="0" step="0.01" />
+                <input name="emergencyReserveCurrent" type="text" inputmode="decimal" placeholder="0,00" />
               </label>
               <label class="field">
                 <span>Meta da reserva de emergência</span>
-                <input name="emergencyReserveGoal" type="number" min="0" step="0.01" />
+                <input name="emergencyReserveGoal" type="text" inputmode="decimal" placeholder="0,00" />
               </label>
               <label class="field">
                 <span>Webhook n8n (HTTPS)</span>
@@ -694,11 +694,11 @@
           </label>
           <label class="field">
             <span>Valor mínimo</span>
-            <input name="minValue" type="number" min="0" step="0.01" />
+            <input name="minValue" type="text" inputmode="decimal" placeholder="0,00" />
           </label>
           <label class="field">
             <span>Valor máximo</span>
-            <input name="maxValue" type="number" min="0" step="0.01" />
+            <input name="maxValue" type="text" inputmode="decimal" placeholder="0,00" />
           </label>
           <label class="field">
             <span>Início do período</span>

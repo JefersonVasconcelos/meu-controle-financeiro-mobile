@@ -1012,6 +1012,19 @@ textarea:focus-visible {
   color: var(--red);
 }
 
+.finance-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.delete-record-button {
+  color: #b42318;
+  white-space: nowrap;
+}
+
 .finance-row.is-duplicate {
   opacity: 0.62;
   background: #f1f3f6;

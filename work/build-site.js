@@ -226,6 +226,25 @@ function normalizeCard(input) {
   };
 }
 
+function normalizeDeletedRecords(records) {
+  const allowedCollections = new Set(['accounts', 'incomes', 'transfers', 'cards']);
+  return [...(Array.isArray(records) ? records : []).slice(0, 5000).reduce((map, item) => {
+    const collection = cleanText(item?.collection, 20);
+    const id = cleanText(item?.id, 80);
+    const deletedAt = timestamp(item?.deleted_at);
+    if (!allowedCollections.has(collection) || !/^[a-zA-Z0-9_-]{1,80}$/.test(id) || !deletedAt) return map;
+    const key = collection + ':' + id;
+    const current = map.get(key);
+    if (!current || deletedAt > current.deleted_at) map.set(key, { collection, id, deleted_at: deletedAt });
+    return map;
+  }, new Map()).values()];
+}
+
+function filterDeletedRecords(collection, records, tombstones) {
+  const deletedById = new Map(tombstones.filter((item) => item.collection === collection).map((item) => [item.id, item.deleted_at]));
+  return records.filter((record) => !deletedById.has(record.id) || deletedById.get(record.id) < record.updated_at);
+}
+
 function normalizeState(input) {
   const source = input && typeof input === 'object' ? input : {};
   const settingsSource = source.settings && typeof source.settings === 'object' ? source.settings : {};
@@ -250,6 +269,7 @@ function normalizeState(input) {
     if (!current || expense.updated_at >= current.updated_at) expenseMap.set(expense.id, expense);
   }
   const expenses = [...expenseMap.values()].filter((expense) => !tombstoneMap.has(expense.id) || tombstoneMap.get(expense.id).deleted_at < expense.updated_at);
+  const deletedRecords = normalizeDeletedRecords(source.deletedRecords);
   return {
     settings: {
       monthlyLimit: number(settingsSource.monthlyLimit),
@@ -260,12 +280,13 @@ function normalizeState(input) {
       emergencyReserveGoal: number(settingsSource.emergencyReserveGoal),
       categoryLimits: limits
     },
-    accounts: uniqueRecords(source.accounts, normalizeAccount),
-    incomes: uniqueRecords(source.incomes, normalizeIncome),
-    transfers: uniqueRecords(source.transfers, normalizeTransfer),
-    cards: uniqueRecords(source.cards, normalizeCard),
+    accounts: filterDeletedRecords('accounts', uniqueRecords(source.accounts, normalizeAccount), deletedRecords),
+    incomes: filterDeletedRecords('incomes', uniqueRecords(source.incomes, normalizeIncome), deletedRecords),
+    transfers: filterDeletedRecords('transfers', uniqueRecords(source.transfers, normalizeTransfer), deletedRecords),
+    cards: filterDeletedRecords('cards', uniqueRecords(source.cards, normalizeCard), deletedRecords),
     expenses,
     deletedExpenses: [...tombstoneMap.values()],
+    deletedRecords,
     demoMode: Boolean(source.demoMode) && expenses.every((expense) => expense.id.startsWith('sample-'))
   };
 }
@@ -316,6 +337,7 @@ function removeDemoState(input) {
         card_id: removedCardIds.has(record.card_id) ? '' : record.card_id
       })),
     deletedExpenses: state.deletedExpenses.filter((record) => !isDemoRecord(record)),
+    deletedRecords: state.deletedRecords.filter((record) => !isDemoRecord(record)),
     demoMode: false
   };
   return {
