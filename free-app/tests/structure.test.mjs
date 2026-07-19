@@ -15,6 +15,8 @@ test("HTML contém os fluxos essenciais", async () => {
 test("login com Google restaura a sessão OAuth", async () => {
   const source = await readFile(new URL("../app.js", import.meta.url), "utf8");
   assert.match(source, /provider\", \"google/);
+  assert.match(source, /skip_http_redirect/);
+  assert.match(source, /payload\?\.url/);
   assert.match(source, /access_token/);
   assert.match(source, /consumeOAuthCallback/);
 });
