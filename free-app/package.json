@@ -1,0 +1,13 @@
+{
+  "name": "meu-controle-financeiro-free",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check api/config.js && node --check data-utils.js && node --check money.js",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
