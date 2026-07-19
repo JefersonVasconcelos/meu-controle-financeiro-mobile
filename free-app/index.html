@@ -15,13 +15,13 @@
       <section id="loading-view" class="center-card" aria-busy="true">
         <div class="brand-mark" aria-hidden="true">R$</div>
         <h1>Meu Controle Financeiro</h1>
-        <p>Conectando com seguranÃ§aâ€¦</p>
+        <p>Conectando com segurança…</p>
       </section>
 
       <section id="fatal-view" class="center-card hidden" role="alert">
         <div class="brand-mark danger" aria-hidden="true">!</div>
-        <h1>ConfiguraÃ§Ã£o pendente</h1>
-        <p id="fatal-message">NÃ£o foi possÃ­vel iniciar o aplicativo.</p>
+        <h1>Configuração pendente</h1>
+        <p id="fatal-message">Não foi possível iniciar o aplicativo.</p>
         <button id="retry-button" type="button" class="button primary">Tentar novamente</button>
       </section>
 
@@ -29,7 +29,7 @@
         <header class="auth-header">
           <div class="brand-mark" aria-hidden="true">R$</div>
           <h1>Meu Controle Financeiro</h1>
-          <p>Seus gastos e suas contas em um sÃ³ lugar.</p>
+          <p>Seus gastos e suas contas em um só lugar.</p>
         </header>
 
         <div class="card auth-card">
@@ -68,28 +68,28 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Meu Controle Financeiro</p>
-            <h1 id="page-title">VisÃ£o geral</h1>
+            <h1 id="page-title">Visão geral</h1>
           </div>
-          <button id="refresh-button" class="icon-button" type="button" aria-label="Atualizar dados" title="Atualizar">â†»</button>
+          <button id="refresh-button" class="icon-button" type="button" aria-label="Atualizar dados" title="Atualizar">↻</button>
         </header>
 
         <div id="migration-warning" class="notice warning hidden" role="status">
           <strong>Falta ativar a tabela de contas.</strong>
-          <span>Os gastos continuam funcionando. Execute o arquivo de migraÃ§Ã£o no Supabase para liberar as contas.</span>
+          <span>Os gastos continuam funcionando. Execute o arquivo de migração no Supabase para liberar as contas.</span>
         </div>
 
-        <section id="panel-dashboard" class="panel stack" data-title="VisÃ£o geral">
+        <section id="panel-dashboard" class="panel stack" data-title="Visão geral">
           <div class="metric-grid">
             <article class="metric-card accent">
               <span>Saldo nas contas</span>
               <strong id="metric-balance">R$ 0,00</strong>
             </article>
             <article class="metric-card">
-              <span>Gastos do mÃªs</span>
+              <span>Gastos do mês</span>
               <strong id="metric-expenses">R$ 0,00</strong>
             </article>
             <article class="metric-card">
-              <span>Limite do mÃªs</span>
+              <span>Limite do mês</span>
               <strong id="metric-limit">R$ 0,00</strong>
             </article>
             <article class="metric-card">
@@ -113,7 +113,7 @@
 
           <div class="card stack compact">
             <div class="row between">
-              <h2>Ãšltimos gastos</h2>
+              <h2>Últimos gastos</h2>
               <a class="link-button" href="#expenses" data-go="expenses">Ver todos</a>
             </div>
             <div id="recent-expenses" class="list"></div>
@@ -134,7 +134,7 @@
                 <select id="account-type" required>
                   <option value="conta_digital">Conta digital</option>
                   <option value="conta_corrente">Conta corrente</option>
-                  <option value="poupanca">PoupanÃ§a</option>
+                  <option value="poupanca">Poupança</option>
                   <option value="carteira">Dinheiro / carteira</option>
                   <option value="investimento">Investimento</option>
                   <option value="outro">Outro</option>
@@ -164,10 +164,10 @@
           <div class="card stack">
             <div>
               <h2>Novo gasto</h2>
-              <p class="muted">Valores como 2700,00 e 2.700,00 sÃ£o aceitos.</p>
+              <p class="muted">Valores como 2700,00 e 2.700,00 são aceitos.</p>
             </div>
             <form id="expense-form" class="stack">
-              <label>DescriÃ§Ã£o
+              <label>Descrição
                 <input id="expense-description" placeholder="Ex.: Supermercado" maxlength="120" required />
               </label>
               <div class="form-grid">
@@ -191,8 +191,8 @@
               <label>Forma de pagamento
                 <select id="expense-payment">
                   <option value="pix">Pix</option>
-                  <option value="debito">CartÃ£o de dÃ©bito</option>
-                  <option value="credito">CartÃ£o de crÃ©dito</option>
+                  <option value="debito">Cartão de débito</option>
+                  <option value="credito">Cartão de crédito</option>
                   <option value="dinheiro">Dinheiro</option>
                   <option value="boleto">Boleto</option>
                   <option value="outro">Outro</option>
@@ -200,9 +200,9 @@
               </label>
               <label class="check-row">
                 <input id="expense-paid" type="checkbox" checked />
-                <span>Este gasto jÃ¡ foi pago</span>
+                <span>Este gasto já foi pago</span>
               </label>
-              <label>ObservaÃ§Ãµes (opcional)
+              <label>Observações (opcional)
                 <textarea id="expense-notes" rows="2" maxlength="500"></textarea>
               </label>
               <button class="button primary full" type="submit">Salvar gasto</button>
@@ -235,7 +235,7 @@
           <div class="card stack">
             <div>
               <h2>Importar backup</h2>
-              <p class="muted">Selecione o JSON exportado do app anterior. O arquivo fica no seu aparelho; somente os registros sÃ£o enviados para sua conta.</p>
+              <p class="muted">Selecione o JSON exportado do app anterior. O arquivo fica no seu aparelho; somente os registros são enviados para sua conta.</p>
             </div>
             <input id="backup-file" type="file" accept="application/json,.json" />
             <button id="import-button" class="button secondary full" type="button">Importar dados</button>
@@ -244,18 +244,18 @@
 
           <div class="card stack compact">
             <div>
-              <h2>SessÃ£o</h2>
+              <h2>Sessão</h2>
               <p id="session-email" class="muted"></p>
             </div>
             <button id="logout-button" class="button danger-outline full" type="button">Sair da conta</button>
           </div>
         </section>
 
-        <nav class="bottom-nav" aria-label="NavegaÃ§Ã£o principal">
-          <a class="active" href="#dashboard" data-panel="dashboard"><span aria-hidden="true">âŒ‚</span>InÃ­cio</a>
-          <a href="#accounts" data-panel="accounts"><span aria-hidden="true">â–£</span>Contas</a>
-          <a href="#expenses" data-panel="expenses"><span aria-hidden="true">ï¼‹</span>Gastos</a>
-          <a href="#settings" data-panel="settings"><span aria-hidden="true">âš™</span>Ajustes</a>
+        <nav class="bottom-nav" aria-label="Navegação principal">
+          <a class="active" href="#dashboard" data-panel="dashboard"><span aria-hidden="true">⌂</span>Início</a>
+          <a href="#accounts" data-panel="accounts"><span aria-hidden="true">▣</span>Contas</a>
+          <a href="#expenses" data-panel="expenses"><span aria-hidden="true">＋</span>Gastos</a>
+          <a href="#settings" data-panel="settings"><span aria-hidden="true">⚙</span>Ajustes</a>
         </nav>
       </section>
     </main>
