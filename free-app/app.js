@@ -110,6 +110,35 @@ function restoreSession() {
   }
 }
 
+function consumeOAuthCallback() {
+  if (!window.location.hash) return { session: null, error: null };
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const isOAuthCallback = params.has("access_token") || params.has("error") || params.has("error_description");
+  if (!isOAuthCallback) return { session: null, error: null };
+
+  const cleanUrl = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState(null, document.title, cleanUrl);
+
+  const error = params.get("error_description") || params.get("error");
+  if (error) return { session: null, error };
+
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
+  if (!accessToken || !refreshToken) {
+    return { session: null, error: "O Google não devolveu uma sessão válida. Tente novamente." };
+  }
+
+  const session = {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    token_type: params.get("token_type") || "bearer",
+    expires_in: Number(params.get("expires_in") || 3600),
+    expires_at: Number(params.get("expires_at") || 0) || undefined,
+  };
+  saveSession(session);
+  return { session, error: null };
+}
+
 async function readResponse(response) {
   const text = await response.text();
   if (!text) return null;
@@ -175,6 +204,16 @@ async function signUp(name, email, password) {
     method: "POST",
     body: { email, password, data: { display_name: name } },
   });
+}
+
+function signInWithGoogle() {
+  if (!state.config) return toast("Aguarde a conexão com o banco.", "error");
+  const redirectTo = `${window.location.origin}${window.location.pathname}`;
+  const url = new URL("/auth/v1/authorize", state.config.supabaseUrl);
+  url.searchParams.set("provider", "google");
+  url.searchParams.set("redirect_to", redirectTo);
+  url.searchParams.set("flow_type", "implicit");
+  window.location.assign(url.toString());
 }
 
 async function getUser() {
@@ -642,6 +681,7 @@ async function handleSignup(event) {
 function wireEvents() {
   $("#show-login").addEventListener("click", () => toggleAuth("login"));
   $("#show-signup").addEventListener("click", () => toggleAuth("signup"));
+  $("#google-login").addEventListener("click", signInWithGoogle);
   $("#login-form").addEventListener("submit", handleLogin);
   $("#signup-form").addEventListener("submit", handleSignup);
   $("#account-form").addEventListener("submit", submitAccount);
@@ -675,7 +715,13 @@ async function start() {
   $("#expense-date").value = todayISO();
   try {
     await loadConfig();
-    state.session = restoreSession();
+    const oauth = consumeOAuthCallback();
+    if (oauth.error) {
+      showOnly("#auth-view");
+      toast(oauth.error, "error");
+      return;
+    }
+    state.session = oauth.session || restoreSession();
     if (!state.session) return showOnly("#auth-view");
     try {
       state.user = await getUser();
