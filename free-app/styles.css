@@ -44,10 +44,6 @@ h2 { font-size: 1rem; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; padding: .25rem; background: var(--bg); border-radius: .8rem; margin-bottom: 1.1rem; }
 .segmented button { border: 0; padding: .7rem; border-radius: .65rem; background: transparent; color: var(--muted); font-weight: 700; }
 .segmented button.active { background: #fff; color: var(--brand); box-shadow: 0 2px 10px rgba(0,0,0,.07); }
-.auth-helper { margin-bottom: .75rem; color: var(--muted); font-size: .82rem; line-height: 1.45; }
-.auth-divider { display: flex; align-items: center; gap: .75rem; margin: 1rem 0; color: var(--muted); font-size: .75rem; }
-.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-
 label { display: grid; gap: .4rem; font-size: .86rem; font-weight: 650; }
 input, select, textarea { width: 100%; min-height: 2.8rem; border: 1px solid #cbd8d4; border-radius: .75rem; padding: .72rem .82rem; color: var(--ink); background: #fff; outline: none; }
 textarea { resize: vertical; }
@@ -61,12 +57,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--brand); box-shad
 .button.primary { background: var(--brand); color: #fff; }
 .button.primary:hover { background: var(--brand-dark); }
 .button.secondary { background: var(--brand-soft); color: var(--brand-dark); }
-.button.google { display: flex; align-items: center; justify-content: center; gap: .65rem; background: #fff; color: var(--ink); border-color: #cbd8d4; }
-.button.google:hover { background: #f8fbfa; border-color: #9db5ae; }
-.google-mark { display: grid; place-items: center; width: 1.35rem; height: 1.35rem; border-radius: 50%; color: #4285f4; font-weight: 900; }
 .button.danger-outline { background: #fff; color: var(--danger); border-color: #f2c7c2; }
 .icon-button { width: 2.7rem; height: 2.7rem; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--brand); font-size: 1.35rem; }
 .link-button { border: 0; background: transparent; color: var(--brand); font-weight: 750; padding: .35rem; text-decoration: none; }
+.text-button { justify-self: center; border: 0; background: transparent; color: var(--brand); font-weight: 700; padding: .25rem .5rem; }
+.text-button:hover { text-decoration: underline; }
 
 .app-view { min-height: 100vh; padding: max(1rem, env(safe-area-inset-top)) 1rem calc(6.4rem + env(safe-area-inset-bottom)); }
 .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
