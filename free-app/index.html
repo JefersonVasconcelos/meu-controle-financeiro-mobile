@@ -38,13 +38,6 @@
             <button id="show-signup" type="button" role="tab" aria-selected="false">Criar conta</button>
           </div>
 
-          <p class="auth-helper">Se você entrou pelo Google no aplicativo anterior, continue com a mesma conta.</p>
-          <button id="google-login" class="button google full" type="button">
-            <span class="google-mark" aria-hidden="true">G</span>
-            Continuar com Google
-          </button>
-          <div class="auth-divider"><span>ou use e-mail e senha</span></div>
-
           <form id="login-form" class="stack" autocomplete="on">
             <label>E-mail
               <input id="login-email" name="email" type="email" autocomplete="email" required />
@@ -53,6 +46,7 @@
               <input id="login-password" name="password" type="password" autocomplete="current-password" minlength="6" required />
             </label>
             <button class="button primary full" type="submit">Entrar</button>
+            <button id="forgot-password" class="text-button" type="button">Esqueci minha senha</button>
           </form>
 
           <form id="signup-form" class="stack hidden" autocomplete="on">
@@ -251,6 +245,22 @@
 
           <div class="card stack compact">
             <div>
+              <h2>Alterar senha</h2>
+              <p class="muted">Use pelo menos 6 caracteres.</p>
+            </div>
+            <form id="password-form" class="stack">
+              <label>Nova senha
+                <input id="new-password" type="password" autocomplete="new-password" minlength="6" required />
+              </label>
+              <label>Confirmar nova senha
+                <input id="confirm-password" type="password" autocomplete="new-password" minlength="6" required />
+              </label>
+              <button class="button secondary full" type="submit">Salvar nova senha</button>
+            </form>
+          </div>
+
+          <div class="card stack compact">
+            <div>
               <h2>Sessão</h2>
               <p id="session-email" class="muted"></p>
             </div>
@@ -267,6 +277,6 @@
       </section>
     </main>
 
-    <script type="module" src="./app.js?v=3"></script>
+  <script type="module" src="./app.js?v=4"></script>
   </body>
 </html>
