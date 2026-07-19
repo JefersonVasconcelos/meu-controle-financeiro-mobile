@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+.vercel
+node_modules
+backup/
+*.backup.json
+source-site-backup.json
