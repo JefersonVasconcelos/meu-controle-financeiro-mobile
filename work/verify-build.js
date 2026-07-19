@@ -25,7 +25,7 @@ if (missingIds.length) throw new Error(`Missing ids: ${missingIds.join(", ")}`);
 const server = fs.readFileSync(path.join(root, "dist", "server", "index.js"), "utf8");
 if (!server.includes("content-security-policy")) throw new Error("Security headers are missing");
 if (server.includes("script-src 'self' 'unsafe-inline'")) throw new Error("Inline scripts remain allowed");
-if (!server.includes("controle-financeiro-mobile-v10")) throw new Error("Updated service worker is missing from server bundle");
+if (!server.includes("controle-financeiro-mobile-v11")) throw new Error("Updated service worker is missing from server bundle");
 if (!server.includes("oai-authenticated-user-email")) throw new Error("Authenticated cloud ownership check is missing");
 if (!server.includes("expectedRevision")) throw new Error("Cloud conflict protection is missing");
 if (!server.includes('"/og.png"')) throw new Error("Social preview image is missing");

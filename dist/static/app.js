@@ -43,6 +43,7 @@ let toastTimer = null;
 let cloudSyncTimer = null;
 let cloudPollTimer = null;
 let cloudSyncPromise = null;
+let cloudDeletionInProgress = false;
 let pendingStatementImport = [];
 
 const sampleExpenses = [
@@ -210,6 +211,29 @@ const defaultState = {
     sortBy: "recent",
   },
 };
+
+function createEmptyState(localWebhookUrl = "") {
+  return {
+    settings: {
+      monthlyLimit: 0,
+      cycleStartDay: 1,
+      savingsGoal: 0,
+      monthlyIncome: 0,
+      emergencyReserveCurrent: 0,
+      emergencyReserveGoal: 0,
+      webhookUrl: safeText(localWebhookUrl, 2048),
+      categoryLimits: {},
+    },
+    accounts: [],
+    incomes: [],
+    transfers: [],
+    cards: [],
+    expenses: [],
+    deletedExpenses: [],
+    demoMode: false,
+    filters: structuredClone(defaultState.filters),
+  };
+}
 
 let state = loadState();
 selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
@@ -588,6 +612,7 @@ function markCloudChange() {
 }
 
 function scheduleCloudSync() {
+  if (cloudDeletionInProgress) return;
   window.clearTimeout(cloudSyncTimer);
   cloudSyncTimer = window.setTimeout(() => {
     if (!dom.appShell.classList.contains("is-hidden")) syncCloud();
@@ -605,6 +630,7 @@ function setCloudStatus(kind, text, message = "") {
 }
 
 async function syncCloud(options = {}) {
+  if (cloudDeletionInProgress) return null;
   if (cloudSyncPromise) return cloudSyncPromise;
   cloudSyncPromise = performCloudSync(options).finally(() => { cloudSyncPromise = null; });
   return cloudSyncPromise;
@@ -1675,23 +1701,44 @@ async function eraseAllFinancialData() {
   dom.eraseCloudData.disabled = true;
   dom.securityMessage.textContent = "Excluindo dados...";
   try {
-    const response = await fetch("/api/account-data", {
+    await deleteStoredFinancialData();
+    dom.securityMessage.textContent = "Dados financeiros excluídos. O PIN local foi mantido.";
+    showToast("Dados financeiros excluídos.");
+    await loadOperationalStatus();
+  } catch (error) {
+    dom.securityMessage.textContent = safeText(error.message, 180) || "Não foi possível excluir os dados.";
+  } finally {
+    dom.eraseCloudData.disabled = false;
+  }
+}
+
+function resetFinancialDataAfterDeletion() {
+  const localWebhookUrl = state.settings.webhookUrl || "";
+  state = createEmptyState(localWebhookUrl);
+  selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
+  pendingStatementImport = [];
+  lastDeletedExpense = null;
+  selectedExpenseId = null;
+  saveState();
+  localStorage.removeItem(cloudMetaKey);
+  render();
+  dom.cloudAccount.textContent = "Conta autenticada";
+  setCloudStatus("synced", "Nuvem pronta", "Nenhum dado financeiro salvo nesta conta.");
+}
+
+async function deleteStoredFinancialData() {
+  cloudDeletionInProgress = true;
+  window.clearTimeout(cloudSyncTimer);
+  try {
+    if (cloudSyncPromise) await cloudSyncPromise.catch(() => null);
+    await cloudRequest("/api/account-data", {
       method: "DELETE",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ confirm: "EXCLUIR" }),
     });
-    if (!response.ok) throw new Error("Não foi possível excluir os dados.");
-    state = structuredClone(defaultState);
-    localStorage.removeItem(storageKey);
-    localStorage.removeItem(cloudMetaKey);
-    pendingStatementImport = [];
-    render();
-    dom.securityMessage.textContent = "Dados financeiros excluídos. O PIN local foi mantido.";
-    showToast("Dados financeiros excluídos.");
-  } catch (error) {
-    dom.securityMessage.textContent = safeText(error.message, 180);
+    resetFinancialDataAfterDeletion();
   } finally {
-    dom.eraseCloudData.disabled = false;
+    cloudDeletionInProgress = false;
   }
 }
 
@@ -2476,22 +2523,20 @@ function undoDelete() {
   showToast("Gasto restaurado.");
 }
 
-function prepareForRealData() {
+async function clearDemoData() {
   if (!state.demoMode) return;
-  state.expenses = state.expenses.filter((expense) => !String(expense.id).startsWith("sample-"));
-  state.accounts = state.accounts.filter((item) => !String(item.id).startsWith("sample-"));
-  state.incomes = state.incomes.filter((item) => !String(item.id).startsWith("sample-"));
-  state.transfers = state.transfers.filter((item) => !String(item.id).startsWith("sample-"));
-  state.cards = state.cards.filter((item) => !String(item.id).startsWith("sample-"));
-  state.demoMode = false;
-}
-
-function clearDemoData() {
-  prepareForRealData();
-  selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
-  markCloudChange();
-  render();
-  showToast("Dados de demonstração removidos. Agora você pode registrar seus gastos.");
+  if (!confirm("Excluir todos os dados de demonstração e começar com uma conta vazia?")) return;
+  dom.clearDemoData.disabled = true;
+  dom.clearDemoData.textContent = "Excluindo...";
+  try {
+    await deleteStoredFinancialData();
+    showToast("Dados de demonstração excluídos. Agora você pode registrar seus gastos.");
+  } catch (error) {
+    showToast(safeText(error.message, 180) || "Não foi possível excluir os dados de demonstração.");
+  } finally {
+    dom.clearDemoData.disabled = false;
+    dom.clearDemoData.textContent = "Excluir dados de exemplo";
+  }
 }
 
 function showToast(message, actionLabel = "") {

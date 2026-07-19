@@ -94,6 +94,7 @@ globalThis.phase2 = {
   verifyPin,
   normalizeFinancialState,
   mergeFinancialStates,
+  createEmptyState,
   getCycleBoundsFor(anchor, settings) {
     state.settings = { ...state.settings, ...settings };
     selectedMonth = new Date(anchor[0], anchor[1], 1);
@@ -190,6 +191,18 @@ const normalizedCloud = api.normalizeFinancialState({
   demoMode: false,
 });
 assert.strictEqual(Object.hasOwn(normalizedCloud.settings, "webhookUrl"), false, "O webhook local não deve ir para a nuvem");
+
+const emptyState = api.createEmptyState("https://example.com/webhook");
+assert.strictEqual(emptyState.demoMode, false, "Após a exclusão o modo de demonstração não pode reaparecer");
+assert.strictEqual(emptyState.expenses.length, 0, "Após a exclusão não pode haver gastos de exemplo");
+assert.strictEqual(emptyState.accounts.length, 0, "Após a exclusão não pode haver contas de exemplo");
+assert.strictEqual(emptyState.incomes.length, 0, "Após a exclusão não pode haver receitas de exemplo");
+assert.strictEqual(emptyState.cards.length, 0, "Após a exclusão não pode haver cartões de exemplo");
+assert.strictEqual(emptyState.settings.monthlyLimit, 0, "Após a exclusão o orçamento deve voltar a zero");
+assert.strictEqual(emptyState.settings.webhookUrl, "https://example.com/webhook", "A configuração local do webhook pode ser preservada");
+
+assert.ok(html.includes('id="clearDemoData" type="button">Excluir dados de exemplo</button>'), "O botão para excluir exemplos deve ser explícito");
+assert.ok(html.includes('id="eraseCloudData" class="danger-button" type="button">Excluir todos os dados</button>'), "O botão para excluir todos os dados deve ser explícito");
 
 class MockStatement {
   constructor(db, sql) { this.db = db; this.sql = sql; this.values = []; }
