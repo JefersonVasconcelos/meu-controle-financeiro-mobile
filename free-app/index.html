@@ -38,6 +38,13 @@
             <button id="show-signup" type="button" role="tab" aria-selected="false">Criar conta</button>
           </div>
 
+          <p class="auth-helper">Se você entrou pelo Google no aplicativo anterior, continue com a mesma conta.</p>
+          <button id="google-login" class="button google full" type="button">
+            <span class="google-mark" aria-hidden="true">G</span>
+            Continuar com Google
+          </button>
+          <div class="auth-divider"><span>ou use e-mail e senha</span></div>
+
           <form id="login-form" class="stack" autocomplete="on">
             <label>E-mail
               <input id="login-email" name="email" type="email" autocomplete="email" required />
@@ -260,6 +267,6 @@
       </section>
     </main>
 
-    <script type="module" src="./app.js?v=2"></script>
+    <script type="module" src="./app.js?v=3"></script>
   </body>
 </html>
