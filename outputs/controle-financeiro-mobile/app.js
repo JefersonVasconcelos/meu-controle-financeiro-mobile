@@ -1731,6 +1731,7 @@ function auditLabel(type) {
     state_created: "Dados criados na nuvem",
     state_updated: "Dados sincronizados",
     state_restored: "Versão anterior restaurada",
+    demo_data_removed: "Dados de exemplo removidos",
     client_error: "Falha de interface registrada",
     server_error: "Falha do serviço registrada",
   })[type] || "Evento operacional";
@@ -2619,17 +2620,26 @@ async function clearDemoData(triggerButton = dom.clearDemoData) {
     cloudDeletionInProgress = true;
     window.clearTimeout(cloudSyncTimer);
     if (cloudSyncPromise) await cloudSyncPromise.catch(() => null);
-    const remote = await cloudRequest("/api/state", { cache: "no-store" });
-    const current = normalizeFinancialState(remote.state || financialStateSnapshot());
-    const cleaned = stripDemoFinancialState(current);
-    if (JSON.stringify(current) === JSON.stringify(cleaned)) {
-      applyFinancialState(cleaned);
-      showToast("Nenhum dado de demonstração foi encontrado.");
-      return;
-    }
-    await replaceCloudStateWithoutDemo(cleaned, Number(remote.revision || 0));
+    const result = await cloudRequest("/api/account-data/remove-demo", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ confirm: "REMOVER_EXEMPLOS" }),
+    });
+    if (result.state) applyFinancialState(result.state);
+    const meta = loadCloudMeta();
+    meta.revision = Number(result.revision || meta.revision || 0);
+    meta.updatedAt = normalizeTimestamp(result.updatedAt) || meta.updatedAt || new Date().toISOString();
+    meta.pending = false;
+    meta.initialized = true;
+    meta.email = safeText(result.user?.email || meta.email, 320);
+    saveCloudMeta(meta);
+    const preservedExpenses = Number(result.summary?.preservedExpenses ?? state.expenses.length);
+    const preservedMessage = preservedExpenses === 1
+      ? "1 lançamento foi mantido."
+      : `${preservedExpenses} lançamentos foram mantidos.`;
+    setCloudStatus("synced", `Sincronizado ${formatSyncTime(meta.updatedAt)}`, `Dados de exemplo removidos. ${preservedMessage}`);
     await loadOperationalStatus();
-    showToast("Dados de demonstração removidos. Seus outros lançamentos foram mantidos.");
+    showToast(result.changed === false ? "Nenhum dado de demonstração foi encontrado." : `Dados de exemplo removidos. ${preservedMessage}`);
   } catch (error) {
     showToast(safeText(error.message, 180) || "Não foi possível remover os dados de demonstração.");
   } finally {

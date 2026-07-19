@@ -270,6 +270,68 @@ function normalizeState(input) {
   };
 }
 
+function removeDemoState(input) {
+  const state = normalizeState(input);
+  const isDemoRecord = (record) => String(record?.id || '').startsWith('sample-');
+  const demoSettings = {
+    monthlyLimit: 2200,
+    savingsGoal: 300,
+    monthlyIncome: 3500,
+    emergencyReserveCurrent: 1500,
+    emergencyReserveGoal: 9000
+  };
+  const demoCategoryLimits = { Mercado: 650, Transporte: 450, Moradia: 700, Lazer: 250, Assinaturas: 150 };
+  const collections = [state.accounts, state.incomes, state.transfers, state.cards, state.expenses];
+  const demoRecordCount = collections.reduce((total, records) => total + records.filter(isDemoRecord).length, 0);
+  const matchingSettings = Object.entries(demoSettings).filter(([key, value]) => Number(state.settings[key]) === value).length;
+  const hasDemoSignature = state.demoMode || demoRecordCount > 0 || matchingSettings >= 4;
+  const settings = { ...state.settings, categoryLimits: { ...state.settings.categoryLimits } };
+  if (hasDemoSignature) {
+    for (const [key, value] of Object.entries(demoSettings)) {
+      if (Number(settings[key]) === value) settings[key] = 0;
+    }
+    for (const [category, value] of Object.entries(demoCategoryLimits)) {
+      if (Number(settings.categoryLimits[category]) === value) delete settings.categoryLimits[category];
+    }
+  }
+
+  const removedAccountIds = new Set(state.accounts.filter(isDemoRecord).map((record) => record.id));
+  const removedCardIds = new Set(state.cards.filter(isDemoRecord).map((record) => record.id));
+  const transfers = state.transfers.filter((record) => !isDemoRecord(record) && !removedAccountIds.has(record.fromAccountId) && !removedAccountIds.has(record.toAccountId));
+  const cleaned = {
+    settings,
+    accounts: state.accounts.filter((record) => !isDemoRecord(record)),
+    incomes: state.incomes
+      .filter((record) => !isDemoRecord(record))
+      .map((record) => removedAccountIds.has(record.accountId) ? { ...record, accountId: '' } : record),
+    transfers,
+    cards: state.cards
+      .filter((record) => !isDemoRecord(record))
+      .map((record) => removedAccountIds.has(record.accountId) ? { ...record, accountId: '' } : record),
+    expenses: state.expenses
+      .filter((record) => !isDemoRecord(record))
+      .map((record) => ({
+        ...record,
+        account_id: removedAccountIds.has(record.account_id) ? '' : record.account_id,
+        card_id: removedCardIds.has(record.card_id) ? '' : record.card_id
+      })),
+    deletedExpenses: state.deletedExpenses.filter((record) => !isDemoRecord(record)),
+    demoMode: false
+  };
+  return {
+    state: cleaned,
+    changed: JSON.stringify(state) !== JSON.stringify(cleaned),
+    summary: {
+      removedAccounts: state.accounts.length - cleaned.accounts.length,
+      removedIncomes: state.incomes.length - cleaned.incomes.length,
+      removedTransfers: state.transfers.length - cleaned.transfers.length,
+      removedCards: state.cards.length - cleaned.cards.length,
+      removedExpenses: state.expenses.length - cleaned.expenses.length,
+      preservedExpenses: cleaned.expenses.length
+    }
+  };
+}
+
 function rowPayload(row, user) {
   if (!row) return { state: null, revision: 0, updatedAt: null, user };
   let parsed;
@@ -344,6 +406,40 @@ async function eraseAccountData(request, env, user) {
   return json({ deleted: true });
 }
 
+async function removeDemoData(request, env, user) {
+  await ensureSchema(env);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Solicitação inválida.' }, 400); }
+  if (body.confirm !== 'REMOVER_EXEMPLOS') return json({ error: 'Confirmação obrigatória.' }, 400);
+  const current = await env.DB.prepare('SELECT state_json, revision, updated_at FROM finance_state WHERE owner_email = ?')
+    .bind(user.email).first();
+  if (!current) return json({ ...rowPayload(current, user), changed: false, summary: { removedAccounts: 0, removedIncomes: 0, removedTransfers: 0, removedCards: 0, removedExpenses: 0, preservedExpenses: 0 } });
+
+  let parsed;
+  try { parsed = JSON.parse(current.state_json); } catch { parsed = {}; }
+  const result = removeDemoState(parsed);
+  if (!result.changed) return json({ ...rowPayload(current, user), changed: false, summary: result.summary });
+
+  await saveHistory(env, user, current);
+  const updatedAt = new Date().toISOString();
+  const updated = await env.DB.prepare('UPDATE finance_state SET state_json = ?, revision = revision + 1, updated_at = ? WHERE owner_email = ? AND revision = ? RETURNING revision, updated_at')
+    .bind(JSON.stringify(result.state), updatedAt, user.email, Number(current.revision || 0)).first();
+  if (!updated) {
+    const conflict = await env.DB.prepare('SELECT state_json, revision, updated_at FROM finance_state WHERE owner_email = ?').bind(user.email).first();
+    return json({ ...rowPayload(conflict, user), error: 'Os dados foram atualizados em outro dispositivo. Sincronize e tente novamente.' }, 409);
+  }
+  await writeAudit(env, user, 'demo_data_removed', {
+    previousRevision: current.revision,
+    revision: updated.revision,
+    removedAccounts: result.summary.removedAccounts,
+    removedIncomes: result.summary.removedIncomes,
+    removedCards: result.summary.removedCards,
+    removedExpenses: result.summary.removedExpenses,
+    preservedExpenses: result.summary.preservedExpenses
+  });
+  return json({ state: result.state, revision: Number(updated.revision), updatedAt: updated.updated_at, user, changed: true, summary: result.summary });
+}
+
 async function getState(env, user) {
   await ensureSchema(env);
   const row = await env.DB.prepare('SELECT state_json, revision, updated_at FROM finance_state WHERE owner_email = ?')
@@ -408,6 +504,7 @@ export default {
         if (url.pathname === '/api/history' && request.method === 'GET') return getHistory(env, user);
         if (url.pathname === '/api/history/restore' && request.method === 'POST') return restoreHistory(request, env, user);
         if (url.pathname === '/api/audit' && request.method === 'GET') return getAudit(env, user);
+        if (url.pathname === '/api/account-data/remove-demo' && request.method === 'POST') return removeDemoData(request, env, user);
         if (url.pathname === '/api/account-data' && request.method === 'DELETE') return eraseAccountData(request, env, user);
         if (url.pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok', storage: Boolean(env.DB), checkedAt: new Date().toISOString() });
         if (url.pathname === '/api/client-error' && request.method === 'POST') {

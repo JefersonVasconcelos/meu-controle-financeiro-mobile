@@ -1,4 +1,4 @@
-const cacheName = "controle-financeiro-mobile-v12";
+const cacheName = "controle-financeiro-mobile-v13";
 const appShell = [
   "./",
   "./index.html",

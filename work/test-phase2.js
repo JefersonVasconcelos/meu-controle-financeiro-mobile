@@ -292,7 +292,7 @@ class MockD1 {
   const workerUrl = `data:text/javascript;base64,${Buffer.from(workerSource).toString("base64")}`;
   const worker = (await import(workerUrl)).default;
   const env = { DB: new MockD1() };
-  const call = (method, email, body) => worker.fetch(new Request("https://app.test/api/state", {
+  const call = (method, email, body, pathname = "/api/state") => worker.fetch(new Request(`https://app.test${pathname}`, {
     method,
     headers: email ? { "oai-authenticated-user-email": email, ...(body ? { "content-type": "application/json" } : {}) } : {},
     body: body ? JSON.stringify(body) : undefined,
@@ -329,6 +329,39 @@ class MockD1 {
   response = await call("GET", "outra@example.com", null);
   payload = await response.json();
   assert.strictEqual(payload.state, null, "Contas diferentes não podem compartilhar dados");
+
+  const demoState = {
+    settings: {
+      monthlyLimit: 2200,
+      cycleStartDay: 1,
+      savingsGoal: 300,
+      monthlyIncome: 3500,
+      emergencyReserveCurrent: 1500,
+      emergencyReserveGoal: 9000,
+      categoryLimits: { Mercado: 650, Moradia: 900 },
+    },
+    accounts: [
+      { id: "sample-account-bank", name: "Conta principal", type: "Conta corrente", openingBalance: 2200 },
+      { id: "sample-account-wallet", name: "Carteira", type: "Carteira", openingBalance: 180 },
+    ],
+    incomes: [{ id: "sample-income-1", description: "Renda mensal", amount: 3500, date: "2026-07-05", accountId: "sample-account-bank" }],
+    cards: [{ id: "sample-card-1", name: "Cartão principal", accountId: "sample-account-bank", limit: 2500, closingDay: 20, dueDay: 28 }],
+    expenses: [expense("real-1", "2026-07-10", 120), expense("real-2", "2026-07-12", 222.65)],
+    deletedExpenses: [],
+    demoMode: false,
+  };
+  response = await call("PUT", "demo@example.com", { state: demoState, expectedRevision: 0 });
+  assert.strictEqual(response.status, 200);
+  response = await call("POST", "demo@example.com", { confirm: "REMOVER_EXEMPLOS" }, "/api/account-data/remove-demo");
+  payload = await response.json();
+  assert.strictEqual(response.status, 200, "A limpeza seletiva deve ser processada pelo servidor");
+  assert.strictEqual(payload.changed, true);
+  assert.strictEqual(payload.state.accounts.length, 0, "As contas de exemplo devem ser removidas no servidor");
+  assert.strictEqual(payload.state.incomes.length, 0, "A renda de exemplo deve ser removida no servidor");
+  assert.strictEqual(payload.state.settings.monthlyIncome, 0, "A renda mensal fictícia deve ser zerada no servidor");
+  assert.strictEqual(payload.state.settings.categoryLimits.Moradia, 900, "Uma configuração personalizada deve ser preservada");
+  assert.deepStrictEqual(Array.from(payload.state.expenses, (item) => item.id), ["real-1", "real-2"], "Os dois lançamentos reais devem ser preservados");
+  assert.strictEqual(payload.summary.preservedExpenses, 2);
 
   console.log("Phase 2 tests passed.");
 })().catch((error) => {
