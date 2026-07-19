@@ -55,14 +55,14 @@ function dateLabel(value) {
 }
 
 function paymentLabel(value) {
-  return ({ pix: "Pix", debito: "DÃ©bito", credito: "CrÃ©dito", dinheiro: "Dinheiro", boleto: "Boleto", outro: "Outro" })[value] ?? "Outro";
+  return ({ pix: "Pix", debito: "Débito", credito: "Crédito", dinheiro: "Dinheiro", boleto: "Boleto", outro: "Outro" })[value] ?? "Outro";
 }
 
 function accountTypeLabel(value) {
   return ({
     conta_digital: "Conta digital",
     conta_corrente: "Conta corrente",
-    poupanca: "PoupanÃ§a",
+    poupanca: "Poupança",
     carteira: "Dinheiro / carteira",
     investimento: "Investimento",
     outro: "Outro",
@@ -81,7 +81,7 @@ function showOnly(viewId) {
   ["#loading-view", "#fatal-view", "#auth-view", "#app-view"].forEach((id) => $(id).classList.toggle("hidden", id !== viewId));
 }
 
-function setButtonBusy(button, busy, label = "Aguardeâ€¦") {
+function setButtonBusy(button, busy, label = "Aguarde…") {
   if (!button) return;
   if (busy) {
     button.dataset.originalLabel = button.textContent;
@@ -136,7 +136,7 @@ async function rawRequest(path, { method = "GET", body, token, headers = {} } = 
 }
 
 async function refreshSession() {
-  if (!state.session?.refresh_token) throw new ApiError("Sua sessÃ£o expirou. Entre novamente.", 401);
+  if (!state.session?.refresh_token) throw new ApiError("Sua sessão expirou. Entre novamente.", 401);
   try {
     const next = await rawRequest("/auth/v1/token?grant_type=refresh_token", {
       method: "POST",
@@ -297,7 +297,7 @@ function expenseListItem(expense, withDelete = false) {
   const title = document.createElement("strong");
   title.textContent = expense.description;
   const meta = document.createElement("span");
-  meta.textContent = [dateLabel(expense.expense_date), category?.name, account?.name, paymentLabel(expense.payment_method)].filter(Boolean).join(" Â· ");
+  meta.textContent = [dateLabel(expense.expense_date), category?.name, account?.name, paymentLabel(expense.payment_method)].filter(Boolean).join(" · ");
   copy.append(title, meta);
 
   const value = document.createElement("strong");
@@ -311,7 +311,7 @@ function expenseListItem(expense, withDelete = false) {
     remove.className = "delete-button";
     remove.title = "Excluir gasto";
     remove.setAttribute("aria-label", `Excluir ${expense.description}`);
-    remove.textContent = "Ã—";
+    remove.textContent = "×";
     remove.addEventListener("click", () => deleteExpense(expense));
     item.append(remove);
   }
@@ -346,7 +346,7 @@ function renderAccounts() {
   $("#account-form").querySelector("button[type=submit]").disabled = !state.accountsAvailable;
 
   const list = $("#accounts-list");
-  if (!state.accountsAvailable) setEmpty(list, "Execute a migraÃ§Ã£o do banco para cadastrar contas.");
+  if (!state.accountsAvailable) setEmpty(list, "Execute a migração do banco para cadastrar contas.");
   else if (!state.accounts.length) setEmpty(list, "Nenhuma conta cadastrada.");
   else {
     list.replaceChildren(...state.accounts.map((account) => {
@@ -410,14 +410,14 @@ function openPanel(name) {
 }
 
 async function deleteExpense(expense) {
-  if (!window.confirm(`Excluir o gasto â€œ${expense.description}â€ de ${formatBRL(expense.amount)}?`)) return;
+  if (!window.confirm(`Excluir o gasto “${expense.description}” de ${formatBRL(expense.amount)}?`)) return;
   try {
     await apiRequest(restPath("expenses", `id=eq.${encodeURIComponent(expense.id)}`), { method: "DELETE" });
     state.expenses = state.expenses.filter((item) => item.id !== expense.id);
     renderAll();
-    toast("Gasto excluÃ­do.");
+    toast("Gasto excluído.");
   } catch (error) {
-    toast(error.message || "NÃ£o foi possÃ­vel excluir.", "error");
+    toast(error.message || "Não foi possível excluir.", "error");
   }
 }
 
@@ -427,8 +427,8 @@ async function submitAccount(event) {
   const amount = parseBRL($("#account-balance").value);
   const name = $("#account-name").value.trim();
   if (!name) return toast("Informe o nome da conta.", "error");
-  if (!Number.isFinite(amount)) return toast("Informe um saldo inicial vÃ¡lido.", "error");
-  setButtonBusy(button, true, "Salvandoâ€¦");
+  if (!Number.isFinite(amount)) return toast("Informe um saldo inicial válido.", "error");
+  setButtonBusy(button, true, "Salvando…");
   try {
     await restInsert("accounts", {
       user_id: state.user.id,
@@ -443,7 +443,7 @@ async function submitAccount(event) {
     await loadData();
     toast("Conta salva com sucesso.");
   } catch (error) {
-    toast(error.message || "NÃ£o foi possÃ­vel salvar a conta.", "error");
+    toast(error.message || "Não foi possível salvar a conta.", "error");
   } finally { setButtonBusy(button, false); }
 }
 
@@ -467,7 +467,7 @@ async function submitExpense(event) {
   };
   if (state.expenseAccountAvailable) payload.account_id = $("#expense-account").value || null;
 
-  setButtonBusy(button, true, "Salvandoâ€¦");
+  setButtonBusy(button, true, "Salvando…");
   try {
     await restInsert("expenses", payload);
     event.currentTarget.reset();
@@ -476,7 +476,7 @@ async function submitExpense(event) {
     await loadData();
     toast("Gasto salvo com sucesso.");
   } catch (error) {
-    toast(error.message || "NÃ£o foi possÃ­vel salvar o gasto.", "error");
+    toast(error.message || "Não foi possível salvar o gasto.", "error");
   } finally { setButtonBusy(button, false); }
 }
 
@@ -484,15 +484,15 @@ async function submitLimit(event) {
   event.preventDefault();
   const button = event.currentTarget.querySelector("button[type=submit]");
   const amount = parseBRL($("#monthly-limit").value);
-  if (!Number.isFinite(amount) || amount < 0) return toast("Informe um limite vÃ¡lido.", "error");
+  if (!Number.isFinite(amount) || amount < 0) return toast("Informe um limite válido.", "error");
   const { year, month } = currentPeriod();
-  setButtonBusy(button, true, "Salvandoâ€¦");
+  setButtonBusy(button, true, "Salvando…");
   try {
     await restInsert("monthly_settings", { user_id: state.user.id, year, month, monthly_limit: amount }, { upsert: true, onConflict: "user_id,year,month" });
     await loadData();
     toast("Limite mensal salvo.");
   } catch (error) {
-    toast(error.message || "NÃ£o foi possÃ­vel salvar o limite.", "error");
+    toast(error.message || "Não foi possível salvar o limite.", "error");
   } finally { setButtonBusy(button, false); }
 }
 
@@ -550,12 +550,12 @@ async function importBackup() {
   if (!file) return toast("Selecione o arquivo JSON do backup.", "error");
   if (file.size > 5 * 1024 * 1024) return toast("O backup excede o limite de 5 MB.", "error");
   const button = $("#import-button");
-  setButtonBusy(button, true, "Importandoâ€¦");
+  setButtonBusy(button, true, "Importando…");
   $("#import-report").textContent = "";
   try {
     const backup = JSON.parse(await file.text());
     const legacy = backup?.state;
-    if (!legacy || !Array.isArray(legacy.expenses)) throw new Error("Este arquivo nÃ£o tem o formato de backup esperado.");
+    if (!legacy || !Array.isArray(legacy.expenses)) throw new Error("Este arquivo não tem o formato de backup esperado.");
 
     const categoriesByName = new Map(state.categories.map((item) => [normalizeText(item.name), item.id]));
     const accountResult = await importAccounts(Array.isArray(legacy.accounts) ? legacy.accounts : []);
@@ -585,11 +585,11 @@ async function importBackup() {
     }
     const categoryLimits = await importCategoryLimits(legacy.settings, categoriesByName);
     await loadData();
-    const report = `${rows.length} gasto(s) importado(s), ${duplicates} duplicado(s), ${invalid} invÃ¡lido(s), ${accountResult.imported} conta(s) e ${categoryLimits} limite(s) de categoria.`;
+    const report = `${rows.length} gasto(s) importado(s), ${duplicates} duplicado(s), ${invalid} inválido(s), ${accountResult.imported} conta(s) e ${categoryLimits} limite(s) de categoria.`;
     $("#import-report").textContent = report;
     toast("Backup importado com sucesso.");
   } catch (error) {
-    toast(error.message || "NÃ£o foi possÃ­vel importar o backup.", "error");
+    toast(error.message || "Não foi possível importar o backup.", "error");
   } finally { setButtonBusy(button, false); }
 }
 
@@ -606,21 +606,21 @@ function toggleAuth(mode) {
 async function handleLogin(event) {
   event.preventDefault();
   const button = event.currentTarget.querySelector("button[type=submit]");
-  setButtonBusy(button, true, "Entrandoâ€¦");
+  setButtonBusy(button, true, "Entrando…");
   try {
     await signIn($("#login-email").value.trim(), $("#login-password").value);
     state.user = await getUser();
     showOnly("#app-view");
     await loadData();
   } catch (error) {
-    toast(error.message || "NÃ£o foi possÃ­vel entrar.", "error");
+    toast(error.message || "Não foi possível entrar.", "error");
   } finally { setButtonBusy(button, false); }
 }
 
 async function handleSignup(event) {
   event.preventDefault();
   const button = event.currentTarget.querySelector("button[type=submit]");
-  setButtonBusy(button, true, "Criandoâ€¦");
+  setButtonBusy(button, true, "Criando…");
   try {
     const result = await signUp($("#signup-name").value.trim(), $("#signup-email").value.trim(), $("#signup-password").value);
     if (result?.access_token) {
@@ -635,7 +635,7 @@ async function handleSignup(event) {
       toast("Conta criada. Confirme o e-mail e depois entre.");
     }
   } catch (error) {
-    toast(error.message || "NÃ£o foi possÃ­vel criar a conta.", "error");
+    toast(error.message || "Não foi possível criar a conta.", "error");
   } finally { setButtonBusy(button, false); }
 }
 
@@ -666,7 +666,7 @@ async function loadConfig() {
   const response = await fetch("/api/config", { headers: { Accept: "application/json" } });
   const payload = await readResponse(response);
   if (!response.ok) throw new Error(payload?.error || "Configure o banco no ambiente de hospedagem.");
-  if (!payload?.supabaseUrl || !payload?.supabasePublishableKey) throw new Error("A configuraÃ§Ã£o pÃºblica do Supabase estÃ¡ incompleta.");
+  if (!payload?.supabaseUrl || !payload?.supabasePublishableKey) throw new Error("A configuração pública do Supabase está incompleta.");
   state.config = payload;
 }
 
@@ -688,7 +688,7 @@ async function start() {
     const requestedPanel = window.location.hash.slice(1);
     if (["dashboard", "accounts", "expenses", "settings"].includes(requestedPanel)) openPanel(requestedPanel);
   } catch (error) {
-    $("#fatal-message").textContent = error.message || "NÃ£o foi possÃ­vel iniciar o aplicativo.";
+    $("#fatal-message").textContent = error.message || "Não foi possível iniciar o aplicativo.";
     showOnly("#fatal-view");
   }
 }
