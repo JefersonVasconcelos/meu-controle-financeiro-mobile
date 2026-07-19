@@ -95,6 +95,7 @@ globalThis.phase2 = {
   normalizeFinancialState,
   mergeFinancialStates,
   createEmptyState,
+  stripDemoFinancialState,
   getCycleBoundsFor(anchor, settings) {
     state.settings = { ...state.settings, ...settings };
     selectedMonth = new Date(anchor[0], anchor[1], 1);
@@ -157,7 +158,7 @@ assert.strictEqual(api.isValidWebhookUrl("http://example.com/webhook"), false);
 assert.strictEqual(api.isValidWebhookUrl("javascript:alert(1)"), false);
 
 const html = fs.readFileSync(path.join(__dirname, "..", "outputs", "controle-financeiro-mobile", "index.html"), "utf8");
-for (const requiredId of ["demoBanner", "clearDemoData", "lockApp", "savingsValue", "editExpense", "toastRegion"]) {
+for (const requiredId of ["demoBanner", "clearDemoData", "removeDemoData", "lockApp", "savingsValue", "editExpense", "toastRegion"]) {
   assert.ok(html.includes(`id="${requiredId}"`), `Elemento obrigatório ausente: ${requiredId}`);
 }
 
@@ -201,7 +202,49 @@ assert.strictEqual(emptyState.cards.length, 0, "Após a exclusão não pode have
 assert.strictEqual(emptyState.settings.monthlyLimit, 0, "Após a exclusão o orçamento deve voltar a zero");
 assert.strictEqual(emptyState.settings.webhookUrl, "https://example.com/webhook", "A configuração local do webhook pode ser preservada");
 
-assert.ok(html.includes('id="clearDemoData" type="button">Excluir dados de exemplo</button>'), "O botão para excluir exemplos deve ser explícito");
+const cleanedMixedState = api.stripDemoFinancialState({
+  settings: {
+    monthlyLimit: 2200,
+    cycleStartDay: 1,
+    savingsGoal: 300,
+    monthlyIncome: 3500,
+    emergencyReserveCurrent: 1500,
+    emergencyReserveGoal: 9000,
+    categoryLimits: { Mercado: 650, Outros: 125 },
+  },
+  accounts: [
+    { id: "sample-account-bank", name: "Conta principal", openingBalance: 2200 },
+    { id: "real-account", name: "Minha conta", openingBalance: 25 },
+  ],
+  incomes: [{ id: "sample-income-1", description: "Renda mensal", amount: 3500, date: "2026-07-05", accountId: "sample-account-bank" }],
+  cards: [{ id: "sample-card-1", name: "Cartão principal", accountId: "sample-account-bank", limit: 2500 }],
+  expenses: [
+    expense("sample-1", "2026-07-02", 274.7),
+    expense("real-1", "2026-07-10", 120),
+    expense("real-2", "2026-07-12", 222.65),
+  ],
+  deletedExpenses: [],
+  demoMode: false,
+});
+assert.deepStrictEqual(Array.from(cleanedMixedState.expenses, (item) => item.id), ["real-1", "real-2"], "A limpeza seletiva deve preservar os dois lançamentos reais");
+assert.deepStrictEqual(Array.from(cleanedMixedState.accounts, (item) => item.id), ["real-account"], "A limpeza seletiva deve remover somente contas de exemplo");
+assert.strictEqual(cleanedMixedState.incomes.length, 0, "A receita de exemplo deve ser removida");
+assert.strictEqual(cleanedMixedState.cards.length, 0, "O cartão de exemplo deve ser removido");
+assert.strictEqual(cleanedMixedState.settings.monthlyIncome, 0, "A renda mensal fictícia deve ser zerada");
+assert.strictEqual(cleanedMixedState.settings.emergencyReserveCurrent, 0, "A reserva fictícia deve ser zerada");
+assert.strictEqual(cleanedMixedState.settings.categoryLimits.Mercado, undefined, "Limites de categoria fictícios devem ser removidos");
+assert.strictEqual(cleanedMixedState.settings.categoryLimits.Outros, 125, "Limites personalizados devem ser preservados");
+assert.strictEqual(cleanedMixedState.demoMode, false);
+
+const legitimateIncome = api.stripDemoFinancialState({
+  settings: { monthlyIncome: 3500, cycleStartDay: 1 },
+  expenses: [expense("real-only", "2026-07-10", 20)],
+  demoMode: false,
+});
+assert.strictEqual(legitimateIncome.settings.monthlyIncome, 3500, "Um valor legítimo isolado não pode ser tratado como demonstração");
+
+assert.ok(html.includes('id="clearDemoData" type="button">Remover dados de exemplo</button>'), "O botão do aviso deve remover somente exemplos");
+assert.ok(html.includes('id="removeDemoData" class="secondary-button" type="button">Remover dados de exemplo</button>'), "A limpeza seletiva deve ficar disponível no perfil");
 assert.ok(html.includes('id="eraseCloudData" class="danger-button" type="button">Excluir todos os dados</button>'), "O botão para excluir todos os dados deve ser explícito");
 
 class MockStatement {

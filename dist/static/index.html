@@ -87,7 +87,7 @@
         <section id="homeView" class="view is-active">
           <div id="demoBanner" class="status-banner demo-banner is-hidden" role="status">
             <span><strong>Dados de demonstração.</strong> Estes gastos são exemplos e não representam suas finanças.</span>
-            <button id="clearDemoData" type="button">Excluir dados de exemplo</button>
+            <button id="clearDemoData" type="button">Remover dados de exemplo</button>
           </div>
 
           <div id="staleBanner" class="status-banner is-hidden">
@@ -599,9 +599,10 @@
             </div>
             <div class="button-row security-actions">
               <button id="refreshOperations" class="secondary-button" type="button">Atualizar auditoria</button>
+              <button id="removeDemoData" class="secondary-button" type="button">Remover dados de exemplo</button>
               <button id="eraseCloudData" class="danger-button" type="button">Excluir todos os dados</button>
             </div>
-            <p class="helper-text">A exclusão remove dados financeiros, histórico e auditoria desta conta. O PIN local será mantido.</p>
+            <p class="helper-text">“Remover dados de exemplo” mantém seus outros lançamentos. “Excluir todos os dados” também remove histórico e auditoria. O PIN local será mantido.</p>
             <div class="section-grid security-sections">
               <article>
                 <h3>Pontos de recuperação</h3>

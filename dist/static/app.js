@@ -235,6 +235,63 @@ function createEmptyState(localWebhookUrl = "") {
   };
 }
 
+function isDemoRecord(record) {
+  return String(record?.id || "").startsWith("sample-");
+}
+
+function stripDemoFinancialState(source) {
+  const normalized = normalizeFinancialState(source);
+  const demoCollections = [normalized.accounts, normalized.incomes, normalized.transfers, normalized.cards, normalized.expenses];
+  const demoRecordCount = demoCollections.reduce((total, records) => total + records.filter(isDemoRecord).length, 0);
+  const demoSettings = {
+    monthlyLimit: 2200,
+    savingsGoal: 300,
+    monthlyIncome: 3500,
+    emergencyReserveCurrent: 1500,
+    emergencyReserveGoal: 9000,
+  };
+  const matchingDemoSettings = Object.entries(demoSettings)
+    .filter(([key, value]) => Number(normalized.settings[key]) === value)
+    .length;
+  const hasDemoSignature = normalized.demoMode || demoRecordCount > 0 || matchingDemoSettings >= 4;
+  const settings = {
+    ...normalized.settings,
+    categoryLimits: { ...(normalized.settings.categoryLimits || {}) },
+  };
+
+  if (hasDemoSignature) {
+    for (const [key, value] of Object.entries(demoSettings)) {
+      if (Number(settings[key]) === value) settings[key] = 0;
+    }
+    for (const [category, value] of Object.entries(defaultState.settings.categoryLimits)) {
+      if (Number(settings.categoryLimits[category]) === value) delete settings.categoryLimits[category];
+    }
+  }
+
+  const removedAccountIds = new Set(normalized.accounts.filter(isDemoRecord).map((record) => record.id));
+  const removedCardIds = new Set(normalized.cards.filter(isDemoRecord).map((record) => record.id));
+  return {
+    settings,
+    accounts: normalized.accounts.filter((record) => !isDemoRecord(record)),
+    incomes: normalized.incomes
+      .filter((record) => !isDemoRecord(record))
+      .map((record) => removedAccountIds.has(record.accountId) ? { ...record, accountId: "" } : record),
+    transfers: normalized.transfers.filter((record) => !isDemoRecord(record)),
+    cards: normalized.cards
+      .filter((record) => !isDemoRecord(record))
+      .map((record) => removedAccountIds.has(record.accountId) ? { ...record, accountId: "" } : record),
+    expenses: normalized.expenses
+      .filter((record) => !isDemoRecord(record))
+      .map((record) => ({
+        ...record,
+        account_id: removedAccountIds.has(record.account_id) ? "" : record.account_id,
+        card_id: removedCardIds.has(record.card_id) ? "" : record.card_id,
+      })),
+    deletedExpenses: normalized.deletedExpenses.filter((record) => !isDemoRecord(record)),
+    demoMode: false,
+  };
+}
+
 let state = loadState();
 selectedMonth = cycleAnchorForDate(localDateKey(todayLocal()));
 
@@ -307,6 +364,7 @@ const dom = {
   importMessage: document.querySelector("#importMessage"),
   serviceHealth: document.querySelector("#serviceHealth"),
   refreshOperations: document.querySelector("#refreshOperations"),
+  removeDemoData: document.querySelector("#removeDemoData"),
   eraseCloudData: document.querySelector("#eraseCloudData"),
   historyList: document.querySelector("#historyList"),
   auditList: document.querySelector("#auditList"),
@@ -712,6 +770,32 @@ async function pushCloudState(snapshot, expectedRevision, retry = true) {
     if (error.status === 409 && retry && error.payload?.state) {
       const merged = mergeFinancialStates(error.payload.state, snapshot, true);
       return pushCloudState(merged, Number(error.payload.revision || 0), false);
+    }
+    throw error;
+  }
+}
+
+async function replaceCloudStateWithoutDemo(snapshot, expectedRevision, retry = true) {
+  try {
+    const result = await cloudRequest("/api/state", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ state: snapshot, expectedRevision }),
+    });
+    applyFinancialState(result.state || snapshot);
+    const meta = loadCloudMeta();
+    meta.revision = Number(result.revision || expectedRevision + 1);
+    meta.updatedAt = normalizeTimestamp(result.updatedAt) || new Date().toISOString();
+    meta.pending = false;
+    meta.initialized = true;
+    meta.email = safeText(result.user?.email || meta.email, 320);
+    saveCloudMeta(meta);
+    setCloudStatus("synced", `Sincronizado ${formatSyncTime(meta.updatedAt)}`, "Dados de demonstração removidos; seus outros lançamentos foram mantidos.");
+    return result;
+  } catch (error) {
+    if (error.status === 409 && retry && error.payload?.state) {
+      const merged = mergeFinancialStates(error.payload.state, snapshot, true);
+      return replaceCloudStateWithoutDemo(stripDemoFinancialState(merged), Number(error.payload.revision || 0), false);
     }
     throw error;
   }
@@ -2523,19 +2607,35 @@ function undoDelete() {
   showToast("Gasto restaurado.");
 }
 
-async function clearDemoData() {
-  if (!state.demoMode) return;
-  if (!confirm("Excluir todos os dados de demonstração e começar com uma conta vazia?")) return;
-  dom.clearDemoData.disabled = true;
-  dom.clearDemoData.textContent = "Excluindo...";
+async function clearDemoData(triggerButton = dom.clearDemoData) {
+  if (!confirm("Remover somente os dados de demonstração? Seus outros lançamentos serão mantidos.")) return;
+  const button = triggerButton || dom.clearDemoData;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Removendo...";
   try {
-    await deleteStoredFinancialData();
-    showToast("Dados de demonstração excluídos. Agora você pode registrar seus gastos.");
+    await syncCloud({ manual: true });
+    if (loadCloudMeta().pending) throw new Error("Sincronize suas alterações antes de remover os exemplos.");
+    cloudDeletionInProgress = true;
+    window.clearTimeout(cloudSyncTimer);
+    if (cloudSyncPromise) await cloudSyncPromise.catch(() => null);
+    const remote = await cloudRequest("/api/state", { cache: "no-store" });
+    const current = normalizeFinancialState(remote.state || financialStateSnapshot());
+    const cleaned = stripDemoFinancialState(current);
+    if (JSON.stringify(current) === JSON.stringify(cleaned)) {
+      applyFinancialState(cleaned);
+      showToast("Nenhum dado de demonstração foi encontrado.");
+      return;
+    }
+    await replaceCloudStateWithoutDemo(cleaned, Number(remote.revision || 0));
+    await loadOperationalStatus();
+    showToast("Dados de demonstração removidos. Seus outros lançamentos foram mantidos.");
   } catch (error) {
-    showToast(safeText(error.message, 180) || "Não foi possível excluir os dados de demonstração.");
+    showToast(safeText(error.message, 180) || "Não foi possível remover os dados de demonstração.");
   } finally {
-    dom.clearDemoData.disabled = false;
-    dom.clearDemoData.textContent = "Excluir dados de exemplo";
+    cloudDeletionInProgress = false;
+    button.disabled = false;
+    button.textContent = originalLabel;
   }
 }
 
@@ -2614,7 +2714,7 @@ function bindEvents() {
   dom.exportBackup.addEventListener("click", exportFinancialBackup);
   dom.importBackup.addEventListener("change", importFinancialBackup);
   dom.lockApp.addEventListener("click", lockApp);
-  dom.clearDemoData.addEventListener("click", clearDemoData);
+  dom.clearDemoData.addEventListener("click", (event) => clearDemoData(event.currentTarget));
   dom.searchInput.addEventListener("input", renderExpenses);
   dom.showUpload.addEventListener("click", () => toggleAddMode("upload"));
   dom.showManual.addEventListener("click", () => toggleAddMode("manual"));
@@ -2645,6 +2745,7 @@ function bindEvents() {
   dom.statementFile.addEventListener("change", handleStatementFile);
   dom.confirmImport.addEventListener("click", confirmStatementImport);
   dom.refreshOperations.addEventListener("click", loadOperationalStatus);
+  dom.removeDemoData.addEventListener("click", (event) => clearDemoData(event.currentTarget));
   dom.eraseCloudData.addEventListener("click", eraseAllFinancialData);
   dom.historyList.addEventListener("click", (event) => {
     const button = event.target.closest("[data-restore-revision]");
